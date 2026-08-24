@@ -28,6 +28,10 @@ function Servers() {
     queryKey: ["guilds"],
     queryFn: () => listGuilds(),
     enabled: Boolean(me.data),
+    staleTime: 0,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true,
+    retry: 1,
   });
 
   if (me.isLoading) {

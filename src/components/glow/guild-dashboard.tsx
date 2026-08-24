@@ -71,6 +71,7 @@ import {
 
 export interface GuildWorkspace {
   botPresent: boolean;
+  botCheckError?: boolean;
   guild: {
     id: string;
     name: string;

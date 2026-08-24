@@ -46,6 +46,14 @@ async function botFetch<T>(path: string): Promise<T | null> {
   return (await res.json()) as T;
 }
 
+async function botFetchResult<T>(path: string): Promise<{ data: T | null; status: number }> {
+  const res = await fetch(`${API}${path}`, {
+    headers: { Authorization: `Bot ${botToken()}` },
+  });
+  if (!res.ok) return { data: null, status: res.status };
+  return { data: (await res.json()) as T, status: res.status };
+}
+
 export async function fetchUserGuilds(accessToken: string): Promise<DiscordGuildSummary[]> {
   const res = await fetch(`${API}/users/@me/guilds`, {
     headers: { Authorization: `Bearer ${accessToken}` },
@@ -54,16 +62,22 @@ export async function fetchUserGuilds(accessToken: string): Promise<DiscordGuild
   return (await res.json()) as DiscordGuildSummary[];
 }
 
+export interface DiscordBotGuild {
+  id: string;
+  name: string;
+  icon: string | null;
+  approximate_member_count?: number;
+  approximate_presence_count?: number;
+  premium_subscription_count?: number;
+  owner_id: string;
+}
+
+export async function inspectBotGuild(guildId: string) {
+  return botFetchResult<DiscordBotGuild>(`/guilds/${guildId}?with_counts=true`);
+}
+
 export async function fetchBotGuild(guildId: string) {
-  return botFetch<{
-    id: string;
-    name: string;
-    icon: string | null;
-    approximate_member_count?: number;
-    approximate_presence_count?: number;
-    premium_subscription_count?: number;
-    owner_id: string;
-  }>(`/guilds/${guildId}?with_counts=true`);
+  return (await inspectBotGuild(guildId)).data;
 }
 
 export async function fetchGuildRoles(guildId: string) {

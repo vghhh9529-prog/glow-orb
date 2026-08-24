@@ -3,6 +3,7 @@ import {
   canManageGuild,
   fetchBotGuild,
   fetchGuildChannels,
+  inspectBotGuild,
   fetchGuildRoles,
   fetchUserGuilds,
 } from "./discord-api.server";
@@ -78,10 +79,12 @@ export async function ensureGuildRow(guildId: string, name: string, icon: string
 
 export async function loadGuildWorkspace(guildId: string) {
   const { guild } = await assertGuildAccess(guildId);
-  const botGuild = await fetchBotGuild(guildId);
+  const botCheck = await inspectBotGuild(guildId);
+  const botGuild = botCheck.data;
   if (!botGuild) {
     return {
       botPresent: false as const,
+      botCheckError: botCheck.status !== 404,
       guild: { id: guildId, name: guild.name, icon: guild.icon },
     };
   }

@@ -73,6 +73,34 @@ function GuildDashboardRoute() {
     );
   }
 
+  if (!workspace.data.botPresent && workspace.data.botCheckError) {
+    return (
+      <div className="min-h-screen bg-background">
+        <TopBar />
+        <div className="mx-auto max-w-lg px-4 py-28 text-center">
+          <ShieldAlert className="mx-auto size-12 text-destructive" />
+          <h1 className="mt-5 text-2xl font-bold text-foreground">
+            {t("تعذر التحقق من البوت", "Could not verify the bot")}
+          </h1>
+          <p className="mt-3 text-sm leading-6 text-muted-foreground">
+            {t(
+              "البوت قد يكون موجوداً، لكن Discord لم يسمح للتطبيق بقراءة السيرفر. تحقق من Bot Token وإعدادات البوت ثم أعد المحاولة.",
+              "The bot may already be installed, but Discord did not let the app read this server. Check the bot token and settings, then try again.",
+            )}
+          </p>
+          <Button
+            className="mt-6 gap-2"
+            onClick={() => workspace.refetch()}
+            disabled={workspace.isFetching}
+          >
+            <RefreshCw className={`size-4 ${workspace.isFetching ? "animate-spin" : ""}`} />
+            {t("إعادة فحص البوت", "Check bot again")}
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   if (!workspace.data.botPresent) {
     return (
       <div className="min-h-screen bg-background">
