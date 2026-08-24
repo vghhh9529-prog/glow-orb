@@ -1,3 +1,10 @@
+const DISCORD_PREVIEW_REDIRECT_URI =
+  "https://id-preview--fa584a01-062d-40c8-a629-78cea86c73db.lovable.app/api/public/auth/discord/callback";
+
+function configuredRedirectUri() {
+  return process.env["DISCORD_REDIRECT_URI"]?.trim() || DISCORD_PREVIEW_REDIRECT_URI;
+}
+
 export function requestOrigin(request: Request): string {
   const url = new URL(request.url);
   const forwardedHost = request.headers.get("x-forwarded-host");
@@ -8,6 +15,6 @@ export function requestOrigin(request: Request): string {
   return `${proto}://${host}`;
 }
 
-export function callbackUrl(request: Request): string {
-  return `${requestOrigin(request)}/api/public/auth/discord/callback`;
+export function callbackUrl(_request: Request): string {
+  return configuredRedirectUri();
 }
