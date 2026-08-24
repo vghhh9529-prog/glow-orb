@@ -276,6 +276,7 @@ function ticketModal(config: Record<string, unknown>) {
           .setRequired(config.requireDetails === true)
           .setMaxLength(1500)
           .setPlaceholder("Give the support team enough context to help you quickly."),
+      ),
     );
 }
 
