@@ -64,12 +64,17 @@ function replacePlaceholders(
 }
 
 async function moduleConfig<T extends ModuleKey>(guildId: string, module: T) {
-  const { data } = await database()
+  const { data, error } = await database()
     .from("guild_modules")
     .select("enabled, config")
     .eq("guild_id", guildId)
     .eq("module", module)
     .maybeSingle();
+  if (error) {
+    console.error(
+      `[Glow Bot] Failed to load ${module} config for guild ${guildId}: ${error.message}`,
+    );
+  }
   return {
     enabled: Boolean(data?.enabled),
     config: withDefaults(module, data?.config),
@@ -77,12 +82,15 @@ async function moduleConfig<T extends ModuleKey>(guildId: string, module: T) {
 }
 
 async function guildItems(guildId: string, kind: string) {
-  const { data } = await database()
+  const { data, error } = await database()
     .from("guild_items")
     .select("id, name, enabled, data")
     .eq("guild_id", guildId)
     .eq("kind", kind)
     .eq("enabled", true);
+  if (error) {
+    console.error(`[Glow Bot] Failed to load ${kind} items for guild ${guildId}: ${error.message}`);
+  }
   return data ?? [];
 }
 
@@ -274,11 +282,16 @@ async function handleLeveling(message: Message) {
 }
 
 async function handleAutomations(message: Message) {
-  if (!message.guild || !message.member) return;
+  if (!message.guild) return;
   const autoReply = await moduleConfig(message.guild.id, "autoreply");
   if (autoReply.enabled && !(autoReply.config.ignoreBots && message.author.bot)) {
-    const content = message.content.toLowerCase();
+    const content = message.content.toLowerCase().trim();
     const items = await guildItems(message.guild.id, "autoreply");
+    if (items.length === 0) {
+      console.warn(
+        `[Glow Bot] Auto Reply is enabled but has no active rules in guild ${message.guild.id}`,
+      );
+    }
     for (const item of items) {
       const data = (item.data ?? {}) as Record<string, unknown>;
       const trigger = String(data.trigger ?? "")
@@ -286,9 +299,28 @@ async function handleAutomations(message: Message) {
         .trim();
       if (!trigger || !content.includes(trigger)) continue;
       const response = String(data.response ?? "").trim();
-      if (response) await message.reply(response).catch(() => undefined);
+      console.log(
+        `[Glow Bot] Auto Reply matched rule \"${String(item.name ?? trigger)}\" in guild ${message.guild.id}`,
+      );
+      if (response) {
+        await message
+          .reply(response)
+          .catch((error: unknown) =>
+            console.error(
+              `[Glow Bot] Auto Reply could not send a response in guild ${message.guild?.id}`,
+              error,
+            ),
+          );
+      }
       if (Boolean(autoReply.config.deleteTrigger) && message.deletable)
-        await message.delete().catch(() => undefined);
+        await message
+          .delete()
+          .catch((error: unknown) =>
+            console.error(
+              `[Glow Bot] Auto Reply could not delete the trigger in guild ${message.guild?.id}`,
+              error,
+            ),
+          );
       break;
     }
   }

@@ -2,14 +2,20 @@ import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { useI18n } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
-import logo from "@/assets/glow-logo.png";
+import logo from "@/assets/glow-brand-mark.png";
 import { SUPPORT_SERVER_URL } from "@/lib/discord";
 import { Globe } from "lucide-react";
 
 export function GlowMark({ size = 36 }: { size?: number }) {
   return (
     <span className="flex items-center gap-2">
-      <img src={logo} alt="Glow" width={size} height={size} className="rounded-xl" />
+      <img
+        src={logo}
+        alt="Glow"
+        width={size}
+        height={size}
+        className="rounded-xl object-cover shadow-[0_0_22px_hsl(var(--primary)/0.25)]"
+      />
       <span className="text-lg font-bold tracking-wide text-foreground">Glow</span>
     </span>
   );
