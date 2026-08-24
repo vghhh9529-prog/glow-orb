@@ -1,8 +1,10 @@
 import type { Json } from "@/integrations/supabase/types";
 import {
   canManageGuild,
+  canManageGuildMember,
   fetchBotGuild,
   fetchGuildChannels,
+  fetchGuildMember,
   inspectBotGuild,
   fetchGuildRoles,
   fetchUserGuilds,
@@ -24,6 +26,44 @@ export interface ManageableGuild {
   memberCount: number | null;
 }
 
+async function botConfirmedGuildAccess(guildId: string, userId: string) {
+  const botGuildResult = await inspectBotGuild(guildId);
+  const botGuild = botGuildResult.data;
+  if (!botGuild) return null;
+  if (botGuild.owner_id === userId) {
+    return {
+      id: botGuild.id,
+      name: botGuild.name,
+      icon: botGuild.icon,
+      owner: true,
+      owner_id: botGuild.owner_id,
+    };
+  }
+
+  const [member, roles] = await Promise.all([
+    fetchGuildMember(guildId, userId),
+    fetchGuildRoles(guildId),
+  ]);
+  if (!canManageGuildMember(member, roles)) return null;
+  return {
+    id: botGuild.id,
+    name: botGuild.name,
+    icon: botGuild.icon,
+    owner: false,
+    owner_id: botGuild.owner_id,
+    permissions: "8",
+  };
+}
+
+async function resolveGuildAccess(
+  guildId: string,
+  userId: string,
+  oauthGuilds: Awaited<ReturnType<typeof fetchUserGuilds>>,
+) {
+  const oauthMatch = oauthGuilds.find((guild) => guild.id === guildId && canManageGuild(guild, userId));
+  return oauthMatch ?? (await botConfirmedGuildAccess(guildId, userId));
+}
+
 export async function listManageableGuilds(): Promise<ManageableGuild[]> {
   const user = await requireSessionUser();
   const db = await admin();
@@ -34,7 +74,9 @@ export async function listManageableGuilds(): Promise<ManageableGuild[]> {
     .maybeSingle();
   if (!row?.access_token) return [];
 
-  const guilds = (await fetchUserGuilds(row.access_token)).filter(canManageGuild);
+  const guilds = (await fetchUserGuilds(row.access_token)).filter((guild) =>
+    canManageGuild(guild, user.id),
+  );
   const results = await Promise.all(
     guilds.map(async (g) => {
       const botGuild = await fetchBotGuild(g.id);
@@ -62,7 +104,7 @@ export async function assertGuildAccess(guildId: string) {
     .maybeSingle();
   if (!row?.access_token) throw new Error("UNAUTHENTICATED");
   const guilds = await fetchUserGuilds(row.access_token);
-  const match = guilds.find((g) => g.id === guildId && canManageGuild(g));
+  const match = await resolveGuildAccess(guildId, user.id, guilds);
   if (!match) throw new Error("FORBIDDEN");
   return { user, guild: match };
 }

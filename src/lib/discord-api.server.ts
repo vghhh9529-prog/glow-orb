@@ -18,8 +18,9 @@ export interface DiscordGuildSummary {
   id: string;
   name: string;
   icon: string | null;
-  owner?: boolean;
-  permissions?: string;
+  owner?: boolean | string;
+  owner_id?: string;
+  permissions?: string | number;
 }
 
 export interface DiscordRole {
@@ -28,6 +29,7 @@ export interface DiscordRole {
   color: number;
   position: number;
   managed: boolean;
+  permissions?: string | number;
 }
 
 export interface DiscordChannel {
@@ -185,6 +187,7 @@ export async function fetchGuildMember(guildId: string, userId: string) {
   return botFetch<{
     user?: { id: string; username: string; global_name?: string | null; avatar?: string | null };
     joined_at?: string;
+    roles?: string[];
   }>(`/guilds/${guildId}/members/${userId}`);
 }
 
@@ -202,12 +205,34 @@ export async function fetchCurrentUser(accessToken: string) {
   };
 }
 
-/** Manage-guild permission bit (0x20). */
-export function canManageGuild(g: DiscordGuildSummary) {
-  if (g.owner) return true;
-  if (!g.permissions) return false;
-  const perms = BigInt(g.permissions);
-  return (perms & 0x20n) === 0x20n || (perms & 0x8n) === 0x8n;
+/** Discord permission bits used by the dashboard access guard. */
+export function hasDiscordPermission(
+  permissions: string | number | bigint | null | undefined,
+  bit: bigint,
+) {
+  if (permissions === null || permissions === undefined || permissions === "") return false;
+  try {
+    return (BigInt(permissions) & bit) === bit;
+  } catch {
+    return false;
+  }
+}
+
+export function canManageGuild(g: DiscordGuildSummary, userId?: string) {
+  if (g.owner === true || g.owner === "true" || (userId && g.owner_id === userId)) return true;
+  return hasDiscordPermission(g.permissions, 0x20n) || hasDiscordPermission(g.permissions, 0x8n);
+}
+
+export function canManageGuildMember(
+  member: { roles?: string[] } | null | undefined,
+  roles: DiscordRole[],
+) {
+  const memberRoleIds = new Set(member?.roles ?? []);
+  return roles.some(
+    (role) =>
+      memberRoleIds.has(role.id) &&
+      (hasDiscordPermission(role.permissions, 0x20n) || hasDiscordPermission(role.permissions, 0x8n)),
+  );
 }
 
 export async function registerSlashCommands(commands: unknown[]) {
