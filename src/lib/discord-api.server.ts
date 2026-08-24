@@ -183,6 +183,19 @@ export async function exchangeCode(code: string, redirectUri: string) {
   }
 }
 
+export async function refreshAccessToken(refreshToken: string) {
+  const secret = clientSecret();
+  const response = await fetch(`${API}/oauth2/token`, {
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${btoa(`${CLIENT_ID}:${secret}`)}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams({ grant_type: "refresh_token", refresh_token: refreshToken }),
+  });
+  return readTokenResponse(response);
+}
+
 export async function fetchGuildMember(guildId: string, userId: string) {
   return botFetch<{
     user?: { id: string; username: string; global_name?: string | null; avatar?: string | null };

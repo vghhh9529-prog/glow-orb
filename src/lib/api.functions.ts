@@ -1,6 +1,16 @@
 import { createServerFn } from "@tanstack/react-start";
 import { setResponseHeader } from "@tanstack/react-start/server";
-import type { ModuleKey } from "./discord";
+import { MODULE_KEYS, type ModuleKey } from "./discord";
+import { z } from "zod";
+
+const discordId = z.string().regex(/^\d{15,20}$/, "Invalid Discord ID");
+const itemKind = z.string().regex(/^[a-z][a-z0-9_-]{0,48}$/i, "Invalid item kind");
+const text = (max: number) => z.string().max(max);
+const jsonRecord = z
+  .record(z.string().max(80), z.unknown())
+  .refine((value) => JSON.stringify(value).length <= 64_000, "JSON payload is too large");
+const moduleKey = z.enum(MODULE_KEYS);
+const guildInput = z.object({ guildId: discordId });
 
 export const getMe = createServerFn({ method: "GET" }).handler(async () => {
   const { getSessionUser } = await import("./session.server");
@@ -32,14 +42,14 @@ export const listGuilds = createServerFn({ method: "GET" }).handler(async () => 
 });
 
 export const getWorkspace = createServerFn({ method: "GET" })
-  .inputValidator((data: { guildId: string }) => data)
+  .inputValidator((data) => guildInput.parse(data))
   .handler(async ({ data }) => {
     const { loadGuildWorkspace } = await import("./guilds.server");
     return (await loadGuildWorkspace(data.guildId)) as unknown as string;
   });
 
 export const getOverview = createServerFn({ method: "GET" })
-  .inputValidator((data: { guildId: string }) => data)
+  .inputValidator((data) => guildInput.parse(data))
   .handler(async ({ data }) => {
     const { guildOverview } = await import("./guilds.server");
     return guildOverview(data.guildId);
@@ -47,12 +57,10 @@ export const getOverview = createServerFn({ method: "GET" })
 
 export const saveModule = createServerFn({ method: "POST" })
   .inputValidator(
-    (data: {
-      guildId: string;
-      module: ModuleKey;
-      enabled: boolean;
-      config: Record<string, unknown>;
-    }) => data,
+    (data) =>
+      z
+        .object({ guildId: discordId, module: moduleKey, enabled: z.boolean(), config: jsonRecord })
+        .parse(data),
   )
   .handler(async ({ data }) => {
     const { saveModuleConfig } = await import("./guilds.server");
@@ -66,14 +74,14 @@ export const saveModule = createServerFn({ method: "POST" })
   });
 
 export const publishTicketPanel = createServerFn({ method: "POST" })
-  .inputValidator((data: { guildId: string }) => data)
+  .inputValidator((data) => guildInput.parse(data))
   .handler(async ({ data }) => {
     const { publishTicketPanel: publish } = await import("./tickets.server");
     return publish(data.guildId);
   });
 
 export const getItems = createServerFn({ method: "GET" })
-  .inputValidator((data: { guildId: string; kind: string }) => data)
+  .inputValidator((data) => z.object({ guildId: discordId, kind: itemKind }).parse(data))
   .handler(async ({ data }) => {
     const { listGuildItems } = await import("./guilds.server");
     return listGuildItems(data.guildId, data.kind);
@@ -81,29 +89,35 @@ export const getItems = createServerFn({ method: "GET" })
 
 export const saveItem = createServerFn({ method: "POST" })
   .inputValidator(
-    (data: {
-      guildId: string;
-      kind: string;
-      id?: string;
-      name: string;
-      enabled: boolean;
-      data: Record<string, unknown>;
-    }) => data,
+    (data) =>
+      z
+        .object({
+          guildId: discordId,
+          kind: itemKind,
+          id: z.string().uuid().optional(),
+          name: text(100),
+          enabled: z.boolean(),
+          data: jsonRecord,
+        })
+        .parse(data),
   )
   .handler(async ({ data }) => {
     const { upsertGuildItem } = await import("./guilds.server");
-    return upsertGuildItem(data);
+    return upsertGuildItem({
+      ...data,
+      ...(data.id !== undefined ? { id: data.id } : {}),
+    });
   });
 
 export const removeItem = createServerFn({ method: "POST" })
-  .inputValidator((data: { guildId: string; id: string }) => data)
+  .inputValidator((data) => z.object({ guildId: discordId, id: z.string().uuid() }).parse(data))
   .handler(async ({ data }) => {
     const { deleteGuildItem } = await import("./guilds.server");
     return deleteGuildItem(data.guildId, data.id);
   });
 
 export const getCases = createServerFn({ method: "GET" })
-  .inputValidator((data: { guildId: string; filter: string }) => data)
+  .inputValidator((data) => z.object({ guildId: discordId, filter: text(32) }).parse(data))
   .handler(async ({ data }) => {
     const { listCases } = await import("./moderation.server");
     return listCases(data.guildId, data.filter);
@@ -111,50 +125,61 @@ export const getCases = createServerFn({ method: "GET" })
 
 export const addCase = createServerFn({ method: "POST" })
   .inputValidator(
-    (data: {
-      guildId: string;
-      action: string;
-      targetId: string;
-      targetName?: string;
-      reason: string;
-      durationMinutes?: number;
-    }) => data,
+    (data) =>
+      z
+        .object({
+          guildId: discordId,
+          action: z.string().regex(/^[a-z_-]{1,32}$/i),
+          targetId: discordId,
+          targetName: text(100).optional(),
+          reason: text(500),
+          durationMinutes: z.number().int().min(1).max(40320).optional(),
+        })
+        .parse(data),
   )
   .handler(async ({ data }) => {
     const { createCase } = await import("./moderation.server");
-    return createCase(data);
+    return createCase({
+      ...data,
+      ...(data.targetName !== undefined ? { targetName: data.targetName } : {}),
+      ...(data.durationMinutes !== undefined ? { durationMinutes: data.durationMinutes } : {}),
+    });
   });
 
 export const revokeModerationCase = createServerFn({ method: "POST" })
-  .inputValidator((data: { guildId: string; caseId: string }) => data)
+  .inputValidator((data) => z.object({ guildId: discordId, caseId: z.string().uuid() }).parse(data))
   .handler(async ({ data }) => {
     const { revokeCase } = await import("./moderation.server");
     return revokeCase(data.guildId, data.caseId);
   });
 
 export const getAutoModRules = createServerFn({ method: "GET" })
-  .inputValidator((data: { guildId: string }) => data)
+  .inputValidator((data) => guildInput.parse(data))
   .handler(async ({ data }) => {
     const { currentAutoModRules } = await import("./moderation.server");
     return currentAutoModRules(data.guildId);
   });
 
 export const getSuggestions = createServerFn({ method: "GET" })
-  .inputValidator((data: { guildId: string; status: string }) => data)
+  .inputValidator((data) => z.object({ guildId: discordId, status: text(32) }).parse(data))
   .handler(async ({ data }) => {
     const { listSuggestions } = await import("./moderation.server");
     return listSuggestions(data.guildId, data.status);
   });
 
 export const updateSuggestion = createServerFn({ method: "POST" })
-  .inputValidator((data: { guildId: string; id: string; status: string; note: string }) => data)
-  .handler(async ({ data }) => {
+  .inputValidator(
+    (data) =>
+      z
+        .object({ guildId: discordId, id: z.string().uuid(), status: text(32), note: text(1000) })
+        .parse(data),
+  ).handler(async ({ data }) => {
     const { setSuggestionStatus } = await import("./moderation.server");
     return setSuggestionStatus(data.guildId, data.id, data.status, data.note);
   });
 
 export const getGuildLeaderboard = createServerFn({ method: "GET" })
-  .inputValidator((data: { guildId: string; scope: string }) => data)
+  .inputValidator((data) => z.object({ guildId: discordId, scope: text(16) }).parse(data))
   .handler(async ({ data }) => {
     const { guildLeaderboard } = await import("./moderation.server");
     return guildLeaderboard(data.guildId, data.scope);

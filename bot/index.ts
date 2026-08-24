@@ -332,7 +332,7 @@ async function createTicketFromModal(interaction: ModalSubmitInteraction) {
   const embed = await buildTicketEmbed(interaction.guild.name, interaction.user.id, "open", "normal");
   embed.setTitle(`Glow Support · ${subject}`).addFields({ name: "Opened by", value: `<@${interaction.user.id}>`, inline: true }, { name: "Ticket ID", value: saved?.id ? `#${saved.id}` : channel.id, inline: true });
   if (details) embed.addFields({ name: "Initial details", value: details.slice(0, 1024) });
-  await channel.send({ content: staffMentions || undefined, embeds: [embed], components: [new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId("glow_ticket_claim").setLabel("Claim").setEmoji("🛠️").setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId("glow_ticket_priority").setLabel("Priority").setEmoji("⚑").setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId("glow_ticket_close").setLabel("Close").setEmoji("🔒").setStyle(ButtonStyle.Danger))] });
+  await channel.send({ content: staffMentions || undefined, allowedMentions: { parse: [], users: [interaction.user.id], roles: supportRoleIds }, embeds: [embed], components: [new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId("glow_ticket_claim").setLabel("Claim").setEmoji("🛠️").setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId("glow_ticket_priority").setLabel("Priority").setEmoji("⚑").setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId("glow_ticket_close").setLabel("Close").setEmoji("🔒").setStyle(ButtonStyle.Danger))] });
   await logGuildEvent({ guild: interaction.guild, event: "ticket", title: "Ticket opened", description: `<@${interaction.user.id}> opened **${subject}**.`, fields: [{ name: "Channel", value: `<#${channel.id}>`, inline: true }, { name: "Priority", value: "normal", inline: true }] });
   return interaction.editReply(`Your private ticket is ready: <#${channel.id}>`);
 }
@@ -426,7 +426,10 @@ async function handleWelcome(member: GuildMember) {
     member,
   );
   const embedConfig = (config.embed ?? {}) as Record<string, unknown>;
-  const payload: Parameters<typeof channel.send>[0] = { content: message };
+  const payload: Parameters<typeof channel.send>[0] = {
+    content: message,
+    allowedMentions: config.mentionUser === true ? { parse: [], users: [member.id] } : { parse: [] },
+  };
   if (embedConfig.enabled) {
     payload.embeds = [
       {
@@ -625,8 +628,8 @@ async function handleAutomations(message: Message) {
         `[Glow Bot] Auto Reply matched rule "${String(item.name ?? trigger)}" in guild ${message.guild.id}`,
       );
       if (response) {
-        await message
-          .reply(response)
+          await message
+            .reply({ content: response, allowedMentions: { parse: [] } })
           .catch((error: unknown) =>
             console.error(
               `[Glow Bot] Auto Reply could not send a response in guild ${message.guild?.id}`,
@@ -690,7 +693,7 @@ async function handleAutomations(message: Message) {
                     .replaceAll("{user}", `<@${message.author.id}>`)
                     .replaceAll("{username}", message.author.username)
                     .replaceAll("{server}", message.guild.name);
-              await message.reply(rendered).catch((error: unknown) =>
+              await message.reply({ content: rendered, allowedMentions: { parse: [], users: [message.author.id] } }).catch((error: unknown) =>
                 console.error(`[Glow Bot] Custom command could not reply in ${message.guild?.id}`, error),
               );
             }

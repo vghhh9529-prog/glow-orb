@@ -143,6 +143,7 @@ export function interactionResponse(content: string, options?: { ephemeral?: boo
   return Response.json({
     type: 4,
     data: {
+      allowed_mentions: { parse: [] },
       embeds: [
         {
           title: options?.title ?? "Glow",
@@ -203,23 +204,37 @@ async function daily(user: InteractionUser) {
   const streak =
     last && now < last + 36 * 60 * 60_000 ? Math.min(Number(wallet?.streak ?? 0) + 1, 999) : 1;
   const amount = DAILY_BASE + Math.min(streak, DAILY_STREAK_CAP) * DAILY_STREAK_BONUS;
-  await database.from("glow_wallets").upsert(
-    {
-      user_id: user.id,
+  const nextLastDailyAt = new Date(now).toISOString();
+  const updateQuery = database
+    .from("glow_wallets")
+    .update({
       balance: Number(wallet?.balance ?? 0) + amount,
       total_earned: Number(wallet?.total_earned ?? 0) + amount,
       streak,
-      last_daily_at: new Date(now).toISOString(),
-      updated_at: new Date(now).toISOString(),
-    },
-    { onConflict: "user_id" },
-  );
-  await database.from("glow_transactions").insert({
+      last_daily_at: nextLastDailyAt,
+      updated_at: nextLastDailyAt,
+    })
+    .eq("user_id", user.id);
+  const { data: updatedWallet, error: updateError } = wallet?.last_daily_at
+    ? await updateQuery.eq("last_daily_at", wallet.last_daily_at).select("user_id").maybeSingle()
+    : await updateQuery.is("last_daily_at", null).select("user_id").maybeSingle();
+  if (updateError) {
+    console.error("Discord daily update failed", updateError);
+    return interactionResponse("تعذر تحديث مكافأتك حالياً.", { ephemeral: true });
+  }
+  if (!updatedWallet) {
+    return interactionResponse("المكافأة قيد المعالجة أو ما زالت في فترة الانتظار.", { ephemeral: true });
+  }
+  const { error: transactionError } = await database.from("glow_transactions").insert({
     user_id: user.id,
     amount,
     kind: "daily",
     note: `Discord daily · streak ${streak}`,
   });
+  if (transactionError) {
+    console.error("Discord daily transaction insert failed", transactionError);
+    return interactionResponse("تم تحديث الرصيد، لكن تعذر حفظ سجل المكافأة.", { ephemeral: true });
+  }
   return interactionResponse(`استلمت **${amount} Glow**. الستريك الحالي: **${streak}**.`, {
     ephemeral: true,
   });
@@ -374,6 +389,7 @@ export async function sendDiscordCardFollowup(
   form.append(
     "payload_json",
     JSON.stringify({
+      allowed_mentions: { parse: [] },
       embeds: [
         {
           title: card.title,

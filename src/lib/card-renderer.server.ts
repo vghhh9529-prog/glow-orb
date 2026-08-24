@@ -6,6 +6,14 @@ type CanvasRenderingContext2D = SKRSContext2D;
 
 const DISCORD_EPOCH = 1_420_070_400_000;
 const CARD_FONT_FAMILY = "Glow Noto Sans";
+const REMOTE_IMAGE_TIMEOUT_MS = 5_000;
+const MAX_REMOTE_IMAGE_BYTES = 5 * 1024 * 1024;
+const ALLOWED_IMAGE_HOSTS = new Set([
+  "cdn.discordapp.com",
+  "media.discordapp.net",
+  "images-ext-1.discordapp.net",
+  "images-ext-2.discordapp.net",
+]);
 let cardFontsReady = false;
 
 function ensureCardFonts() {
@@ -63,10 +71,41 @@ function relativeTime(value: string | null | undefined) {
 
 async function remoteImage(url?: string | null) {
   if (!url) return null;
+  let parsed: URL;
   try {
-    const response = await fetch(url);
+    parsed = new URL(url);
+  } catch {
+    return null;
+  }
+  if (parsed.protocol !== "https:" || !ALLOWED_IMAGE_HOSTS.has(parsed.hostname.toLowerCase())) return null;
+
+  try {
+    const response = await fetch(parsed, { signal: AbortSignal.timeout(REMOTE_IMAGE_TIMEOUT_MS) });
     if (!response.ok) return null;
-    return await loadImage(Buffer.from(await response.arrayBuffer()));
+    const declaredLength = Number(response.headers.get("content-length") ?? 0);
+    if (declaredLength > MAX_REMOTE_IMAGE_BYTES) return null;
+
+    if (!response.body) {
+      const bytes = await response.arrayBuffer();
+      return bytes.byteLength <= MAX_REMOTE_IMAGE_BYTES
+        ? await loadImage(Buffer.from(bytes))
+        : null;
+    }
+
+    const reader = response.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    while (true) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      total += chunk.value.byteLength;
+      if (total > MAX_REMOTE_IMAGE_BYTES) {
+        await reader.cancel();
+        return null;
+      }
+      chunks.push(chunk.value);
+    }
+    return await loadImage(Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))));
   } catch {
     return null;
   }

@@ -203,11 +203,14 @@ export function withDefaults(module: ModuleKey, config: unknown): Record<string,
   return deepMerge(structuredClone(base), config as Record<string, unknown>);
 }
 
+const UNSAFE_CONFIG_KEYS = new Set(["__proto__", "constructor", "prototype"]);
+
 function deepMerge(
   target: Record<string, unknown>,
   source: Record<string, unknown>,
 ): Record<string, unknown> {
   for (const [key, value] of Object.entries(source)) {
+    if (UNSAFE_CONFIG_KEYS.has(key)) continue;
     const existing = target[key];
     if (
       value &&

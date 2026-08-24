@@ -95,7 +95,9 @@ export async function logGuildEvent(input: {
     .setTimestamp()
     .setFooter({ text: `${input.guild.name} · Glow Logs` });
   if (input.fields?.length) embed.addFields(input.fields.slice(0, 25).map((field) => ({ ...field, name: clipped(field.name, 256), value: clipped(field.value) })));
-  await channel.send({ embeds: [embed] }).catch((error: unknown) => console.error("[Glow Runtime] Could not send log", error));
+  await channel
+    .send({ embeds: [embed], allowedMentions: { parse: [] } })
+    .catch((error: unknown) => console.error("[Glow Runtime] Could not send log", error));
   return true;
 }
 

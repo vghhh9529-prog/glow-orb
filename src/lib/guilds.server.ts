@@ -8,14 +8,58 @@ import {
   inspectBotGuild,
   fetchGuildRoles,
   fetchUserGuilds,
+  refreshAccessToken,
 } from "./discord-api.server";
 import { MODULE_DEFAULTS, withDefaults } from "./module-defaults";
 import type { ModuleKey } from "./discord";
 import { requireSessionUser } from "./session.server";
+import { decryptSecret, encryptSecret, isEncryptedSecret } from "./secret-crypto.server";
 
 async function admin() {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   return supabaseAdmin;
+}
+
+async function discordAccessToken(userId: string) {
+  const db = await admin();
+  const { data: row } = await db
+    .from("discord_users")
+    .select("access_token, refresh_token, token_expires_at")
+    .eq("id", userId)
+    .maybeSingle();
+  const accessToken = decryptSecret(row?.access_token);
+  if (!accessToken) return null;
+  const refreshToken = decryptSecret(row?.refresh_token);
+  const expiresAt = row?.token_expires_at ? new Date(row.token_expires_at).getTime() : 0;
+  if (refreshToken && expiresAt > 0 && expiresAt <= Date.now() + 5 * 60_000) {
+    try {
+      const refreshed = await refreshAccessToken(refreshToken);
+      const refreshedExpiresAt = new Date(Date.now() + refreshed.expires_in * 1000).toISOString();
+      await db
+        .from("discord_users")
+        .update({
+          access_token: encryptSecret(refreshed.access_token),
+          refresh_token: encryptSecret(refreshed.refresh_token || refreshToken),
+          token_expires_at: refreshedExpiresAt,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", userId);
+      return refreshed.access_token;
+    } catch {
+      if (expiresAt <= Date.now()) return null;
+    }
+  }
+
+  if (!isEncryptedSecret(row?.access_token) || (row?.refresh_token && !isEncryptedSecret(row.refresh_token))) {
+    await db
+      .from("discord_users")
+      .update({
+        access_token: encryptSecret(accessToken),
+        ...(refreshToken ? { refresh_token: encryptSecret(refreshToken) } : {}),
+      })
+      .eq("id", userId);
+  }
+  return accessToken;
 }
 
 export interface ManageableGuild {
@@ -66,15 +110,10 @@ async function resolveGuildAccess(
 
 export async function listManageableGuilds(): Promise<ManageableGuild[]> {
   const user = await requireSessionUser();
-  const db = await admin();
-  const { data: row } = await db
-    .from("discord_users")
-    .select("access_token")
-    .eq("id", user.id)
-    .maybeSingle();
-  if (!row?.access_token) return [];
+  const accessToken = await discordAccessToken(user.id);
+  if (!accessToken) return [];
 
-  const guilds = (await fetchUserGuilds(row.access_token)).filter((guild) =>
+  const guilds = (await fetchUserGuilds(accessToken)).filter((guild) =>
     canManageGuild(guild, user.id),
   );
   const results = await Promise.all(
@@ -96,14 +135,9 @@ export async function listManageableGuilds(): Promise<ManageableGuild[]> {
 
 export async function assertGuildAccess(guildId: string) {
   const user = await requireSessionUser();
-  const db = await admin();
-  const { data: row } = await db
-    .from("discord_users")
-    .select("access_token")
-    .eq("id", user.id)
-    .maybeSingle();
-  if (!row?.access_token) throw new Error("UNAUTHENTICATED");
-  const guilds = await fetchUserGuilds(row.access_token);
+  const accessToken = await discordAccessToken(user.id);
+  if (!accessToken) throw new Error("UNAUTHENTICATED");
+  const guilds = await fetchUserGuilds(accessToken);
   const match = await resolveGuildAccess(guildId, user.id, guilds);
   if (!match) throw new Error("FORBIDDEN");
   return { user, guild: match };
@@ -212,7 +246,7 @@ export async function listGuildItems(guildId: string, kind: string) {
 export async function upsertGuildItem(input: {
   guildId: string;
   kind: string;
-  id?: string;
+  id?: string | undefined;
   name: string;
   enabled: boolean;
   data: Record<string, unknown>;

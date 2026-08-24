@@ -30,9 +30,9 @@ export async function createCase(input: {
   guildId: string;
   action: string;
   targetId: string;
-  targetName?: string;
+  targetName?: string | undefined;
   reason: string;
-  durationMinutes?: number;
+  durationMinutes?: number | undefined;
 }) {
   const { user } = await assertGuildAccess(input.guildId);
   const db = await admin();
@@ -77,7 +77,11 @@ export async function revokeCase(guildId: string, caseId: string) {
   if (row.action === "ban")
     applied = await unbanMember(guildId, row.target_id, "Revoked from Glow dashboard");
 
-  await db.from("moderation_cases").update({ active: false }).eq("id", caseId);
+  await db
+    .from("moderation_cases")
+    .update({ active: false })
+    .eq("id", caseId)
+    .eq("guild_id", guildId);
   return { ok: true, applied };
 }
 

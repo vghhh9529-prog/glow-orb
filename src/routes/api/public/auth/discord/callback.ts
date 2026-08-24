@@ -2,6 +2,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { DiscordOAuthError, exchangeCode, fetchCurrentUser } from "@/lib/discord-api.server";
 import { callbackUrl, requestOrigin } from "@/lib/origin.server";
 import { SESSION_TTL_DAYS, buildSessionCookie } from "@/lib/session.server";
+import { encryptSecret } from "@/lib/secret-crypto.server";
+import { allowRateLimit, requestAddress } from "@/lib/rate-limit.server";
 
 function cookies(request: Request): Record<string, string> {
   const out: Record<string, string> = {};
@@ -9,7 +11,13 @@ function cookies(request: Request): Record<string, string> {
   if (!header) return out;
   for (const part of header.split(";")) {
     const [key, ...rest] = part.trim().split("=");
-    if (key) out[key] = decodeURIComponent(rest.join("="));
+    if (key) {
+      try {
+        out[key] = decodeURIComponent(rest.join("="));
+      } catch {
+        // Ignore malformed cookie values and let the state check fail safely.
+      }
+    }
   }
   return out;
 }
@@ -22,6 +30,12 @@ export const Route = createFileRoute("/api/public/auth/discord/callback")({
   server: {
     handlers: {
       GET: async ({ request }) => {
+        if (!allowRateLimit(`oauth-callback:${requestAddress(request)}`, 20, 10 * 60_000)) {
+          return new Response("Too many OAuth callbacks. Try again later.", {
+            status: 429,
+            headers: { "Retry-After": "600", "Content-Type": "text/plain; charset=utf-8" },
+          });
+        }
         const origin = requestOrigin(request);
         const url = new URL(request.url);
         const code = url.searchParams.get("code");
@@ -58,8 +72,8 @@ export const Route = createFileRoute("/api/public/auth/discord/callback")({
               global_name: profile.global_name,
               avatar: profile.avatar,
               email: profile.email,
-              access_token: token.access_token,
-              refresh_token: token.refresh_token,
+              access_token: encryptSecret(token.access_token),
+              refresh_token: encryptSecret(token.refresh_token),
               token_expires_at: expiresAt,
               updated_at: new Date().toISOString(),
             },

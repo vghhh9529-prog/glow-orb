@@ -1,11 +1,18 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { CLIENT_ID } from "@/lib/discord-api.server";
 import { callbackUrl } from "@/lib/origin.server";
+import { allowRateLimit, requestAddress } from "@/lib/rate-limit.server";
 
 export const Route = createFileRoute("/api/public/auth/discord/login")({
   server: {
     handlers: {
       GET: async ({ request }) => {
+        if (!allowRateLimit(`oauth-login:${requestAddress(request)}`, 12, 10 * 60_000)) {
+          return new Response("Too many login attempts. Try again later.", {
+            status: 429,
+            headers: { "Retry-After": "600", "Content-Type": "text/plain; charset=utf-8" },
+          });
+        }
         const state = crypto.randomUUID();
         const url = new URL(request.url);
         const next = url.searchParams.get("next") ?? "/dashboard";

@@ -14,13 +14,18 @@ function configuredRedirectUri(request?: Request) {
 }
 
 export function requestOrigin(request: Request): string {
-  const url = new URL(request.url);
-  const forwardedHost = request.headers.get("x-forwarded-host");
-  const host = forwardedHost ?? url.host;
-  const proto =
-    request.headers.get("x-forwarded-proto") ??
-    (host.startsWith("localhost") || host.startsWith("127.0.0.1") ? "http" : "https");
-  return `${proto}://${host}`;
+  const configured = process.env["PUBLIC_APP_URL"]?.trim();
+  if (configured) {
+    try {
+      return new URL(configured).origin;
+    } catch {
+      // Fall through to the origin from the server-owned Request URL.
+    }
+  }
+
+  // Do not trust x-forwarded-host/proto supplied by an untrusted client. Railway's
+  // server Request URL already represents the public host at this boundary.
+  return new URL(request.url).origin;
 }
 
 export function callbackUrl(request: Request): string {

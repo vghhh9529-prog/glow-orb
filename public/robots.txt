@@ -1,14 +1,26 @@
+User-agent: *
+Allow: /
+Disallow: /dashboard
+Disallow: /api/
+Disallow: /.env
+Disallow: /.git/
+
 User-agent: Googlebot
 Allow: /
+Disallow: /dashboard
+Disallow: /api/
 
 User-agent: Bingbot
 Allow: /
+Disallow: /dashboard
+Disallow: /api/
 
 User-agent: Twitterbot
 Allow: /
+Disallow: /dashboard
+Disallow: /api/
 
 User-agent: facebookexternalhit
 Allow: /
-
-User-agent: *
-Allow: /
+Disallow: /dashboard
+Disallow: /api/

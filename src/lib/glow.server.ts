@@ -38,6 +38,7 @@ export async function loadWallet() {
 export async function claimDaily() {
   const user = await requireSessionUser();
   const db = await admin();
+  await db.from("glow_wallets").upsert({ user_id: user.id }, { onConflict: "user_id", ignoreDuplicates: true });
   const { data: wallet } = await db.from("glow_wallets").select("*").eq("user_id", user.id).maybeSingle();
 
   const last = wallet?.last_daily_at ? new Date(wallet.last_daily_at).getTime() : 0;
@@ -46,29 +47,42 @@ export async function claimDaily() {
     return { ok: false as const, reason: "cooldown", nextAt: new Date(last + DAILY_COOLDOWN_HOURS * 3600_000).toISOString() };
   }
 
-  // streak continues when claimed within 36h of the last claim
+  // Streak continues when claimed within 36h of the last claim. The conditional
+  // update below makes the cooldown check atomic across concurrent requests.
   const keepStreak = last > 0 && now < last + 36 * 3600_000;
   const streak = keepStreak ? Math.min((wallet?.streak ?? 0) + 1, 999) : 1;
   const bonus = Math.min(streak, DAILY_STREAK_CAP) * DAILY_STREAK_BONUS;
   const amount = DAILY_BASE + bonus;
-
-  await db.from("glow_wallets").upsert(
-    {
-      user_id: user.id,
+  const nextLastDailyAt = new Date(now).toISOString();
+  const updateQuery = db
+    .from("glow_wallets")
+    .update({
       balance: Number(wallet?.balance ?? 0) + amount,
       total_earned: Number(wallet?.total_earned ?? 0) + amount,
       streak,
-      last_daily_at: new Date(now).toISOString(),
-      updated_at: new Date(now).toISOString(),
-    },
-    { onConflict: "user_id" },
-  );
-  await db.from("glow_transactions").insert({
+      last_daily_at: nextLastDailyAt,
+      updated_at: nextLastDailyAt,
+    })
+    .eq("user_id", user.id);
+  const { data: updatedWallet, error: updateError } = wallet?.last_daily_at
+    ? await updateQuery.eq("last_daily_at", wallet.last_daily_at).select("user_id").maybeSingle()
+    : await updateQuery.is("last_daily_at", null).select("user_id").maybeSingle();
+  if (updateError) throw updateError;
+  if (!updatedWallet) {
+    return {
+      ok: false as const,
+      reason: "cooldown",
+      nextAt: new Date(Date.now() + DAILY_COOLDOWN_HOURS * 3600_000).toISOString(),
+    };
+  }
+
+  const { error: transactionError } = await db.from("glow_transactions").insert({
     user_id: user.id,
     amount,
     kind: "daily",
     note: `Daily reward · streak ${streak}`,
   });
+  if (transactionError) throw transactionError;
 
   return {
     ok: true as const,
@@ -80,6 +94,7 @@ export async function claimDaily() {
 }
 
 export async function glowLeaderboard() {
+  await requireSessionUser();
   const db = await admin();
   const { data } = await db
     .from("glow_wallets")
