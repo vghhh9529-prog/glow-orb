@@ -56,17 +56,20 @@ const response = await handleDiscordInteraction(
   },
   "https://example.test",
 );
-const body = (await response.json()) as { type?: number; data?: { content?: string } };
+const body = (await response.json()) as {
+  type?: number;
+  data?: { content?: string; embeds?: Array<{ description?: string }> };
+};
+const helpDescription = body.data?.embeds?.[0]?.description ?? body.data?.content ?? "";
 if (
   body.type !== 4 ||
-  !body.data?.content?.includes("/server") ||
-  !body.data.content.includes("/roles") ||
-  !body.data.content.includes("/colors") ||
-  !body.data.content.includes("/server-banner") ||
-  !body.data.content.includes("/ping") ||
-  !body.data.content.includes("/avatar") ||
-  !body.data.content.includes("/server-banner") ||
-  !body.data.content.includes("/clear")
+  !helpDescription.includes("/server") ||
+  !helpDescription.includes("/roles") ||
+  !helpDescription.includes("/colors") ||
+  !helpDescription.includes("/server-banner") ||
+  !helpDescription.includes("/ping") ||
+  !helpDescription.includes("/avatar") ||
+  !helpDescription.includes("/clear")
 ) {
   throw new Error("/help smoke response is invalid");
 }

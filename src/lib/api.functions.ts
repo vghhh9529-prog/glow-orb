@@ -60,6 +60,13 @@ export const saveModule = createServerFn({ method: "POST" })
     return result;
   });
 
+export const publishTicketPanel = createServerFn({ method: "POST" })
+  .inputValidator((data: { guildId: string }) => data)
+  .handler(async ({ data }) => {
+    const { publishTicketPanel: publish } = await import("./tickets.server");
+    return publish(data.guildId);
+  });
+
 export const getItems = createServerFn({ method: "GET" })
   .inputValidator((data: { guildId: string; kind: string }) => data)
   .handler(async ({ data }) => {

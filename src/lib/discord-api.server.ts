@@ -211,6 +211,27 @@ export async function registerSlashCommands(commands: unknown[]) {
   return (await res.json()) as unknown[];
 }
 
+export async function upsertChannelMessage(
+  channelId: string,
+  messageId: string | undefined,
+  payload: Record<string, unknown>,
+) {
+  const path = messageId
+    ? `${API}/channels/${channelId}/messages/${messageId}`
+    : `${API}/channels/${channelId}/messages`;
+  const res = await fetch(path, {
+    method: messageId ? "PATCH" : "POST",
+    headers: {
+      Authorization: `Bot ${botToken()}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) return { ok: false as const, status: res.status, error: await res.text() };
+  const data = (await res.json()) as { id: string };
+  return { ok: true as const, id: data.id };
+}
+
 export async function timeoutMember(
   guildId: string,
   userId: string,

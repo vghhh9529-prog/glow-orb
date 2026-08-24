@@ -134,11 +134,19 @@ export async function verifyDiscordRequest(request: Request, body: string): Prom
   }
 }
 
-export function interactionResponse(content: string, options?: { ephemeral?: boolean }) {
+export function interactionResponse(content: string, options?: { ephemeral?: boolean; title?: string; color?: number }) {
   return Response.json({
     type: 4,
     data: {
-      content,
+      embeds: [
+        {
+          title: options?.title ?? "Glow",
+          description: content,
+          color: options?.color ?? 0x7c5cff,
+          footer: { text: "Glow · Discord Community Control Center" },
+          timestamp: new Date().toISOString(),
+        },
+      ],
       ...(options?.ephemeral ? { flags: 64 } : {}),
     },
   });

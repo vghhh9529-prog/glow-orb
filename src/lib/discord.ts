@@ -52,6 +52,7 @@ export const MODULE_KEYS = [
   "automod",
   "protection",
   "customcommands",
+  "tickets",
   "commands",
 ] as const;
 

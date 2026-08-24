@@ -74,7 +74,17 @@ const LABELS: Record<string, [string, string]> = {
   percent: ["النسبة %", "Percent %"],
   nameTemplate: ["قالب الاسم", "Name template"],
   defaultUserLimit: ["حد الأعضاء", "User limit"],
-  panelEnabled: ["لوحة التحكم", "Control panel"],
+  panelEnabled: ["تفعيل اللوحة", "Enable panel"],
+  panelChannelId: ["قناة لوحة التذاكر", "Panel channel"],
+  transcriptChannelId: ["قناة السجلات", "Transcript channel"],
+  supportRoleIds: ["رولات فريق الدعم", "Support roles"],
+  panelTitle: ["عنوان اللوحة", "Panel title"],
+  panelDescription: ["وصف اللوحة", "Panel description"],
+  panelColor: ["لون اللوحة", "Panel color"],
+  ticketName: ["قالب اسم التذكرة", "Ticket name template"],
+  notifyStaff: ["تنبيه فريق الدعم", "Notify support team"],
+  allowClaim: ["السماح باستلام التذكرة", "Allow claiming"],
+  transcriptEnabled: ["حفظ السجل", "Save transcript"],
   deleteWhenEmpty: ["حذف عند الفراغ", "Delete when empty"],
   allowRename: ["السماح بتغيير الاسم", "Allow rename"],
   allowLock: ["السماح بالقفل", "Allow lock"],
@@ -341,6 +351,7 @@ function ObjectFields({
   return (
     <div className="grid items-stretch gap-4 md:grid-cols-2">
       {Object.entries(data).map(([key, value]) => {
+        if (key === "panelMessageId") return null;
         const wide =
           (value && typeof value === "object" && !Array.isArray(value)) ||
           key === "message" ||

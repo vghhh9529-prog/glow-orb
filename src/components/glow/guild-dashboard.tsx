@@ -26,6 +26,7 @@ import {
   Shield,
   Sparkles,
   Tags,
+  Ticket,
   Trash2,
   Trophy,
   UserPlus,
@@ -44,6 +45,7 @@ import {
   getOverview,
   getSuggestions,
   removeItem,
+  publishTicketPanel,
   revokeModerationCase,
   saveItem,
   saveModule,
@@ -278,6 +280,14 @@ export const MODULE_META: Record<ModuleKey, ModuleMeta> = {
     icon: Command,
     group: "core",
   },
+  tickets: {
+    title: "التذاكر الفنية",
+    en: "Support Tickets",
+    description: "أنشئ لوحة دعم، وافتح تذاكر خاصة، وأدر فريق المساعدة.",
+    enDescription: "Publish a support panel, open private tickets and manage your help team.",
+    icon: Ticket,
+    group: "core",
+  },
 };
 
 const SECTION_META: Record<"moderation" | "suggestion-review" | "leaderboard", ModuleMeta> = {
@@ -383,8 +393,8 @@ export function GuildDashboardLayout({
       items: ["suggestions", "autoreply", "autointeraction", "customcommands"] as ModuleKey[],
     },
     {
-      label: t("الأوامر", "Commands"),
-      items: ["commands"] as ModuleKey[],
+      label: t("الأوامر والدعم", "Commands & support"),
+      items: ["commands", "tickets"] as ModuleKey[],
     },
     {
       label: t("الأمان والإشراف", "Safety & moderation"),
@@ -793,11 +803,124 @@ export function GuildSectionPage({
   const normalized = section as SectionKey;
   if (normalized === "commands")
     return <CommandsModulePage guildId={guildId} workspace={workspace} />;
+  if (normalized === "tickets")
+    return <TicketsPage guildId={guildId} workspace={workspace} />;
   if (isModuleKey(normalized))
     return <ModulePage guildId={guildId} moduleKey={normalized} workspace={workspace} />;
   if (normalized === "moderation") return <ModerationPage guildId={guildId} />;
   if (normalized === "suggestion-review") return <SuggestionsPage guildId={guildId} />;
   return <LeaderboardPage guildId={guildId} />;
+}
+
+function TicketsPage({
+  guildId,
+  workspace,
+}: {
+  guildId: string;
+  workspace: GuildWorkspace;
+}) {
+  const { t } = useI18n();
+  const qc = useQueryClient();
+  const current = workspace.modules?.["tickets"];
+  const [enabled, setEnabled] = useState(current?.enabled ?? true);
+  const [config, setConfig] = useState<Record<string, unknown>>(
+    current?.config ?? MODULE_DEFAULTS.tickets,
+  );
+  const hydrated = useRef(false);
+
+  useEffect(() => {
+    hydrated.current = false;
+    setEnabled(current?.enabled ?? true);
+    setConfig(current?.config ?? MODULE_DEFAULTS.tickets);
+    const timer = window.setTimeout(() => {
+      hydrated.current = true;
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [current]);
+
+  const save = useMutation({
+    mutationFn: () => saveModule({ data: { guildId, module: "tickets", enabled, config } }),
+    onSuccess: () => {
+      toast.success(t("تم حفظ إعدادات التذاكر", "Ticket settings saved"));
+      qc.invalidateQueries({ queryKey: ["workspace", guildId] });
+    },
+    onError: () => toast.error(t("تعذر حفظ إعدادات التذاكر", "Could not save ticket settings")),
+  });
+
+  useEffect(() => {
+    if (!hydrated.current) return;
+    const timer = window.setTimeout(() => save.mutate(), 550);
+    return () => window.clearTimeout(timer);
+  }, [enabled, config]);
+
+  const publish = useMutation({
+    mutationFn: async () => {
+      await save.mutateAsync();
+      return publishTicketPanel({ data: { guildId } });
+    },
+    onSuccess: () => {
+      toast.success(t("تم نشر لوحة التذاكر في Discord", "Ticket panel published to Discord"));
+      qc.invalidateQueries({ queryKey: ["workspace", guildId] });
+    },
+    onError: () => toast.error(t("تعذر نشر لوحة التذاكر", "Could not publish ticket panel")),
+  });
+
+  const tickets = useQuery<GuildItem[]>({
+    queryKey: ["items", guildId, "tickets"],
+    queryFn: async () => (await getItems({ data: { guildId, kind: "tickets" } })) as unknown as GuildItem[],
+  });
+  const openTickets = (tickets.data ?? []).filter((item) => item.enabled !== false).length;
+  const roles: Option[] = (workspace.roles ?? []).map((role) => ({ id: role.id, name: role.name }));
+  const channels: Option[] = (workspace.channels ?? []).map((channel) => ({
+    id: channel.id,
+    name: channel.name,
+  }));
+
+  return (
+    <div className="space-y-6">
+      <SectionHero
+        icon={Ticket}
+        title={t("التذاكر الفنية", "Support Tickets")}
+        description={t(
+          "أنشئ نظام دعم خاص داخل Discord مع لوحة فتح تذكرة، فريق مساعدة، تصنيف، أولوية وسجل قابل للرجوع.",
+          "Create a private support workflow inside Discord with a panel, support team, category, priority and a durable record.",
+        )}
+        enabled={enabled}
+        onEnabledChange={setEnabled}
+      />
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_300px]">
+        <Card className="glow-panel p-5 sm:p-6">
+          <div className="flex flex-col gap-4 border-b border-border/50 pb-5 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.2em] text-primary">{t("إعداد كامل", "Full setup")}</p>
+              <h2 className="mt-2 text-xl font-bold text-foreground">{t("لوحة الدعم", "Support panel")}</h2>
+              <p className="mt-1 text-sm text-muted-foreground">{t("كل تغيير يُحفظ تلقائياً لكل سيرفر.", "Every change is automatically saved per server.")}</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" onClick={() => save.mutate()} disabled={save.isPending} className="gap-2"><Save className="size-4" />{t("حفظ الآن", "Save now")}</Button>
+              <Button onClick={() => publish.mutate()} disabled={publish.isPending || save.isPending} className="gap-2"><Ticket className="size-4" />{publish.isPending ? t("جاري النشر…", "Publishing…") : t("انشر في Discord", "Publish to Discord")}</Button>
+            </div>
+          </div>
+          <div className="pt-5"><ConfigEditor config={config} roles={roles} channels={channels} onChange={setConfig} /></div>
+        </Card>
+        <aside className="space-y-5">
+          <Card className="glow-panel p-5">
+            <PanelTitle icon={Ticket} title={t("دورة التذكرة", "Ticket flow")} />
+            <div className="mt-4 space-y-3">
+              {[
+                ["01", t("لوحة فتح", "Open panel")],
+                ["02", t("قناة خاصة", "Private channel")],
+                ["03", t("استلام وإغلاق", "Claim and close")],
+                ["04", t("سجل دائم", "Durable record")],
+              ].map(([number, label]) => <div key={number} className="flex items-center gap-3 rounded-xl bg-background/25 px-3 py-2.5"><span className="text-xs font-black text-primary">{number}</span><span className="text-sm font-semibold text-muted-foreground">{label}</span></div>)}
+            </div>
+          </Card>
+          <Card className="glow-panel border-primary/20 bg-primary/5 p-5"><PanelTitle icon={Shield} title={t("مهم", "Important")} /><p className="mt-4 text-sm leading-7 text-muted-foreground">{t("اختر قناة اللوحة ثم اضغط انشر في Discord. البوت سينشئ القنوات الخاصة ويقرأ الإعدادات من قاعدة البيانات نفسها.", "Choose a panel channel, then publish to Discord. The bot creates private channels and reads the same database settings.")}</p></Card>
+          <Card className="glow-panel p-5"><PanelTitle icon={Activity} title={t("نشاط التذاكر", "Ticket activity")} /><div className="mt-4 grid grid-cols-2 gap-3"><div className="rounded-xl bg-background/30 p-3"><p className="text-2xl font-black text-foreground">{openTickets}</p><p className="mt-1 text-xs text-muted-foreground">{t("مفتوحة", "Open")}</p></div><div className="rounded-xl bg-background/30 p-3"><p className="text-2xl font-black text-foreground">{tickets.data?.length ?? 0}</p><p className="mt-1 text-xs text-muted-foreground">{t("كل التذاكر", "All tickets")}</p></div></div><div className="mt-4 space-y-2">{(tickets.data ?? []).slice(0, 4).map((item) => <div key={String(item.id)} className="flex items-center justify-between gap-3 rounded-xl bg-background/20 px-3 py-2"><span className="truncate text-xs font-semibold text-muted-foreground">{String(item.name ?? "ticket")}</span><Badge variant="secondary" className={item.enabled === false ? "text-muted-foreground" : "bg-success/10 text-success"}>{item.enabled === false ? t("مغلقة", "Closed") : t("مفتوحة", "Open")}</Badge></div>)}</div></Card>
+        </aside>
+      </div>
+    </div>
+  );
 }
 
 function CommandsModulePage({
