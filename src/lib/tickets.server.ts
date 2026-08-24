@@ -47,6 +47,16 @@ export async function publishTicketPanel(guildId: string) {
         title,
         description,
         color: Number.parseInt(color.replace("#", ""), 16) || 0x7c5cff,
+        fields: [
+          {
+            name: "How it works",
+            value: "Click **Open a ticket**, describe your request, then the private support room will be created automatically.",
+          },
+          {
+            name: "Support workflow",
+            value: "The team can claim the ticket, set its priority, close it with an HTML transcript, or reopen it when needed.",
+          },
+        ],
         footer: { text: `${botGuild.name} · Glow Support` },
       },
     ],

@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import {
   Activity,
+  Archive,
   ArrowLeft,
   Ban,
   BarChart3,
@@ -264,6 +265,14 @@ export const MODULE_META: Record<ModuleKey, ModuleMeta> = {
     icon: Shield,
     group: "safety",
   },
+  logging: {
+    title: "اللوقات المتطورة",
+    en: "Advanced Logs",
+    description: "سجل الرسائل والأعضاء والرولات والقنوات والصوت والتذاكر في مكان مخصص.",
+    enDescription: "Track messages, members, roles, channels, voice activity and tickets in one place.",
+    icon: Archive,
+    group: "safety",
+  },
   customcommands: {
     title: "الأوامر المخصصة",
     en: "Custom Commands",
@@ -398,7 +407,7 @@ export function GuildDashboardLayout({
     },
     {
       label: t("الأمان والإشراف", "Safety & moderation"),
-      items: ["automod", "protection"] as ModuleKey[],
+      items: ["automod", "protection", "logging"] as ModuleKey[],
     },
   ];
 
@@ -908,10 +917,11 @@ function TicketsPage({
             <PanelTitle icon={Ticket} title={t("دورة التذكرة", "Ticket flow")} />
             <div className="mt-4 space-y-3">
               {[
-                ["01", t("لوحة فتح", "Open panel")],
+
+                ["01", t("نموذج الطلب", "Request form")],
                 ["02", t("قناة خاصة", "Private channel")],
-                ["03", t("استلام وإغلاق", "Claim and close")],
-                ["04", t("سجل دائم", "Durable record")],
+                ["03", t("استلام وأولوية", "Claim and priority")],
+                ["04", t("إغلاق وترانسكربت HTML", "Close and HTML transcript")],
               ].map(([number, label]) => <div key={number} className="flex items-center gap-3 rounded-xl bg-background/25 px-3 py-2.5"><span className="text-xs font-black text-primary">{number}</span><span className="text-sm font-semibold text-muted-foreground">{label}</span></div>)}
             </div>
           </Card>

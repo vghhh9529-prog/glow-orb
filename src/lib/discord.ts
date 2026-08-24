@@ -52,6 +52,7 @@ export const MODULE_KEYS = [
   "autointeraction",
   "automod",
   "protection",
+  "logging",
   "customcommands",
   "tickets",
   "commands",

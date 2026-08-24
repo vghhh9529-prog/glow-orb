@@ -84,10 +84,30 @@ const LABELS: Record<string, [string, string]> = {
   ticketName: ["قالب اسم التذكرة", "Ticket name template"],
   notifyStaff: ["تنبيه فريق الدعم", "Notify support team"],
   allowClaim: ["السماح باستلام التذكرة", "Allow claiming"],
+  allowPriorityChange: ["السماح بتغيير الأولوية", "Allow priority changes"],
+  requireSubject: ["إلزام موضوع التذكرة", "Require ticket subject"],
+  requireDetails: ["إلزام تفاصيل الطلب", "Require ticket details"],
+  maxOpenPerUser: ["أقصى تذاكر مفتوحة للعضو", "Max open tickets per user"],
   transcriptEnabled: ["حفظ السجل", "Save transcript"],
   deleteWhenEmpty: ["حذف عند الفراغ", "Delete when empty"],
   allowRename: ["السماح بتغيير الاسم", "Allow rename"],
   allowLock: ["السماح بالقفل", "Allow lock"],
+  memberUpdate: ["تغييرات الأعضاء", "Member updates"],
+  massRoleChange: ["تغيير رولات جماعي", "Mass role changes"],
+  webhookCreate: ["إنشاء Webhook", "Webhook creation"],
+  enabledEvents: ["أنواع الأحداث", "Enabled events"],
+  includeBots: ["تسجيل أحداث البوتات", "Log bot events"],
+  includeMessageContent: ["حفظ محتوى الرسائل", "Include message content"],
+  ignoredChannelIds: ["قنوات مستثناة من اللوق", "Ignored channels"],
+  ignoredRoleIds: ["رولات مستثناة من اللوق", "Ignored roles"],
+  colors: ["ألوان اللوقات", "Log colors"],
+  moderation: ["الإشراف", "Moderation"],
+  member: ["الأعضاء", "Members"],
+  channel: ["القنوات", "Channels"],
+  role: ["الرولات", "Roles"],
+  voice: ["الصوت", "Voice"],
+  ticket: ["التذاكر", "Tickets"],
+  system: ["النظام", "System"],
   globalCooldownSeconds: ["التبريد العام (ثانية)", "Global cooldown (s)"],
   ignoreBots: ["تجاهل البوتات", "Ignore bots"],
   deleteTrigger: ["حذف رسالة الأمر", "Delete trigger"],
@@ -98,6 +118,23 @@ const LABELS: Record<string, [string, string]> = {
 
 const PUNISHMENTS = ["removeRoles", "kick", "ban", "timeout", "none"];
 const ACTIONS = ["block", "timeout", "delete", "log"];
+const LOG_EVENT_OPTIONS: Option[] = [
+  { id: "messageDelete", name: "Message deleted" },
+  { id: "messageUpdate", name: "Message edited" },
+  { id: "memberJoin", name: "Member joined" },
+  { id: "memberLeave", name: "Member left" },
+  { id: "memberBan", name: "Member banned" },
+  { id: "memberUnban", name: "Member unbanned" },
+  { id: "roleCreate", name: "Role created" },
+  { id: "roleDelete", name: "Role deleted" },
+  { id: "roleUpdate", name: "Role updated" },
+  { id: "channelCreate", name: "Channel created" },
+  { id: "channelDelete", name: "Channel deleted" },
+  { id: "channelUpdate", name: "Channel updated" },
+  { id: "voiceState", name: "Voice activity" },
+  { id: "ticket", name: "Ticket activity" },
+  { id: "moderation", name: "Moderation activity" },
+];
 
 function label(key: string, t: (a: string, e: string) => string) {
   const found = LABELS[key];
@@ -227,7 +264,13 @@ function Field({
 
   if (Array.isArray(value)) {
     if (value.every((v) => typeof v === "string")) {
-      const opts = isRoleKey(name) ? ctx.roles : isChannelKey(name) ? ctx.channels : null;
+      const opts = name === "enabledEvents"
+        ? LOG_EVENT_OPTIONS
+        : isRoleKey(name)
+          ? ctx.roles
+          : isChannelKey(name)
+            ? ctx.channels
+            : null;
       return (
         <div className="space-y-1.5">
           <Label className="text-xs text-muted-foreground">{title}</Label>

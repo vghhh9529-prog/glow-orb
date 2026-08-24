@@ -2,6 +2,7 @@ import "dotenv/config";
 
 import {
   ActionRowBuilder,
+  AuditLogEvent,
   ButtonBuilder,
   ButtonStyle,
   ChannelType,
@@ -15,6 +16,10 @@ import {
   type ChatInputCommandInteraction,
   type GuildMember,
   type Message,
+  ModalBuilder,
+  TextInputBuilder,
+  TextInputStyle,
+  type ModalSubmitInteraction,
   type VoiceState,
 } from "discord.js";
 
@@ -27,6 +32,13 @@ import {
 } from "../src/lib/discord-interactions.server";
 import { botToken, registerSlashCommands } from "../src/lib/discord-api.server";
 import { MODULE_DEFAULTS, withDefaults } from "../src/lib/module-defaults";
+import {
+  logGuildEvent,
+  protectGuildEvent,
+  recentAuditActor,
+  roleDetails,
+  roleIds,
+} from "../src/lib/discord-runtime.server";
 import { type ModuleKey } from "../src/lib/discord";
 import { SLASH_COMMANDS } from "../src/lib/slash-commands";
 
@@ -115,6 +127,8 @@ function ticketRecordData(input: {
   claimedBy?: string | null;
   priority?: string;
   categoryId?: string;
+  subject?: string;
+  createdAt?: string;
 }) {
   return {
     channelId: input.channelId,
@@ -124,6 +138,8 @@ function ticketRecordData(input: {
     claimedBy: input.claimedBy ?? null,
     priority: input.priority ?? "normal",
     categoryId: input.categoryId ?? null,
+    subject: input.subject ?? "General support",
+    createdAt: input.createdAt ?? new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
 }
@@ -149,6 +165,8 @@ async function saveTicketRecord(input: {
   claimedBy?: string | null;
   priority?: string;
   categoryId?: string;
+  subject?: string;
+  createdAt?: string;
 }) {
   const record = {
     guild_id: input.guildId,
@@ -184,27 +202,117 @@ function escapeHtml(value: string) {
   })[character] ?? character);
 }
 
+async function fetchTicketMessages(channel: Message["channel"]) {
+  if (!("messages" in channel)) return [];
+  const all = new Map<string, Message>();
+  let before: string | undefined;
+  for (let page = 0; page < 10; page += 1) {
+    const batch = await channel.messages.fetch({ limit: 100, ...(before ? { before } : {}) }).catch(() => null);
+    if (!batch || batch.size === 0) break;
+    for (const message of batch.values()) all.set(message.id, message);
+    const oldest = batch.last();
+    if (!oldest || batch.size < 100) break;
+    before = oldest.id;
+  }
+  return [...all.values()].sort((a, b) => a.createdTimestamp - b.createdTimestamp);
+}
+
 async function postTicketTranscript(channel: Message["channel"], ticket: { id?: string; data?: Record<string, unknown> }, config: Record<string, unknown>) {
   const transcriptChannelId = typeof config["transcriptChannelId"] === "string" ? config["transcriptChannelId"] : "";
   if (config["transcriptEnabled"] === false || !transcriptChannelId || !channel.isTextBased()) return;
   const transcriptChannel = await channel.client.channels.fetch(transcriptChannelId).catch(() => null);
   if (!transcriptChannel || !transcriptChannel.isTextBased() || !("send" in transcriptChannel)) return;
-  const messages = await channel.messages.fetch({ limit: 100 }).catch(() => null);
+  const messages = await fetchTicketMessages(channel);
   const channelName = "name" in channel && typeof channel.name === "string" ? channel.name : channel.id;
   const ticketData = ticket.data ?? {};
-  const rows = messages
-    ? [...messages.values()].reverse().map((message) => {
+  const rows = messages.length
+    ? messages.map((message) => {
         const attachments = [...message.attachments.values()]
           .map((attachment) => `<a href="${escapeHtml(attachment.url)}">${escapeHtml(attachment.name ?? "attachment")}</a>`)
           .join(" · ");
         return `<article class="message"><div class="meta"><strong>${escapeHtml(message.author.tag)}</strong><time>${escapeHtml(message.createdAt.toISOString())}</time></div><p>${escapeHtml(message.cleanContent || "").replaceAll("\n", "<br>") || "<em>empty message</em>"}</p>${attachments ? `<div class="attachments">${attachments}</div>` : ""}</article>`;
       }).join("\n")
     : `<p class="empty">No messages could be fetched.</p>`;
-  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Glow ticket transcript · ${escapeHtml(channelName)}</title><style>body{margin:0;background:#090b18;color:#eef0ff;font:15px/1.6 Inter,system-ui,sans-serif;padding:32px}.wrap{max-width:900px;margin:auto}.hero{background:linear-gradient(135deg,#181332,#0c1630);border:1px solid #343064;border-radius:22px;padding:24px;margin-bottom:20px}.eyebrow{color:#a996ff;text-transform:uppercase;letter-spacing:.16em;font-size:11px;font-weight:700}.meta{display:flex;gap:14px;align-items:center;color:#a9acc8}.meta time{font-size:12px}.message{background:#11152a;border:1px solid #24294a;border-radius:16px;padding:14px 16px;margin:10px 0}.message p{margin:8px 0 0;white-space:normal}.attachments{font-size:12px;color:#a996ff}.attachments a{color:#a996ff}</style></head><body><main class="wrap"><section class="hero"><div class="eyebrow">Glow Support</div><h1>${escapeHtml(channelName)}</h1><p>Ticket transcript · ${escapeHtml(String(ticket.id ?? "unknown"))}</p><p>Creator: ${escapeHtml(String(ticketData["creatorName"] ?? "unknown"))}</p></section><section>${rows}</section></main></body></html>`;
+  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Glow ticket transcript · ${escapeHtml(channelName)}</title><style>body{margin:0;background:#090b18;color:#eef0ff;font:15px/1.6 Inter,system-ui,sans-serif;padding:32px}.wrap{max-width:900px;margin:auto}.hero{background:linear-gradient(135deg,#181332,#0c1630);border:1px solid #343064;border-radius:22px;padding:24px;margin-bottom:20px}.eyebrow{color:#a996ff;text-transform:uppercase;letter-spacing:.16em;font-size:11px;font-weight:700}.meta{display:flex;gap:14px;align-items:center;color:#a9acc8}.meta time{font-size:12px}.message{background:#11152a;border:1px solid #24294a;border-radius:16px;padding:14px 16px;margin:10px 0}.message p{margin:8px 0 0;white-space:normal}.attachments{font-size:12px;color:#a996ff}.attachments a{color:#a996ff}</style></head><body><main class="wrap"><section class="hero"><div class="eyebrow">Glow Support</div><h1>${escapeHtml(channelName)}</h1><p>Ticket transcript · ${escapeHtml(String(ticket.id ?? "unknown"))}</p><p>Creator: ${escapeHtml(String(ticketData["creatorName"] ?? "unknown"))}</p><p>Subject: ${escapeHtml(String(ticketData["subject"] ?? "General support"))} · Priority: ${escapeHtml(String(ticketData["priority"] ?? "normal"))} · Claimed by: ${escapeHtml(String(ticketData["claimedBy"] ?? "Unassigned"))}</p><p>Messages captured: ${messages.length}</p></section><section>${rows}</section></main></body></html>`;
   await transcriptChannel.send({
     embeds: [new EmbedBuilder().setColor(0x64748b).setTitle("Ticket transcript saved").setDescription(`HTML transcript for **${channelName}** is attached below.`)],
     files: [{ attachment: Buffer.from(html, "utf8"), name: `glow-${channel.id}-transcript.html` }],
   }).catch((error) => console.error("[Glow Bot] Ticket HTML transcript failed", error));
+}
+
+function ticketModal(config: Record<string, unknown>) {
+  return new ModalBuilder()
+    .setCustomId("glow_ticket_open_modal")
+    .setTitle("Open a Glow support ticket")
+    .addComponents(
+      new ActionRowBuilder<TextInputBuilder>().addComponents(
+        new TextInputBuilder()
+          .setCustomId("subject")
+          .setLabel("What do you need help with?")
+          .setStyle(TextInputStyle.Short)
+          .setRequired(config.requireSubject !== false)
+          .setMaxLength(80)
+          .setPlaceholder("Billing, moderation, bug report...")
+          .setValue("General support"),
+      ),
+      new ActionRowBuilder<TextInputBuilder>().addComponents(
+        new TextInputBuilder()
+          .setCustomId("details")
+          .setLabel("Describe the issue")
+          .setStyle(TextInputStyle.Paragraph)
+          .setRequired(config.requireDetails === true)
+          .setMaxLength(1500)
+          .setPlaceholder("Give the support team enough context to help you quickly."),
+    );
+}
+
+async function createTicketFromModal(interaction: ModalSubmitInteraction) {
+  if (!interaction.guild) return interaction.reply({ content: "Tickets are available inside a server only.", ephemeral: true });
+  await interaction.deferReply({ ephemeral: true });
+  const settings = await ticketConfig(interaction.guild.id);
+  const config = settings.config;
+  if (!settings.enabled) return interaction.editReply("Support tickets are disabled for this server.");
+  const maxOpenPerUser = Math.min(5, Math.max(1, Number(config.maxOpenPerUser ?? 1)));
+  const existing = await database().from("guild_items").select("id, data").eq("guild_id", interaction.guild.id).eq("kind", "tickets").contains("data", { creatorId: interaction.user.id, status: "open" }).limit(10);
+  const openTickets = existing.data ?? [];
+  let activeOpenTickets = 0;
+  for (const openTicket of openTickets.slice(0, maxOpenPerUser)) {
+    const data = (openTicket.data ?? {}) as Record<string, unknown>;
+    if (typeof data["channelId"] !== "string") continue;
+    const existingChannel = await interaction.guild.channels.fetch(data["channelId"]).catch(() => null);
+    if (existingChannel) {
+      activeOpenTickets += 1;
+      return interaction.editReply(`You already have an open ticket: <#${existingChannel.id}>`);
+    }
+    await database().from("guild_items").update({ enabled: false, data: { ...data, status: "closed", closedReason: "Ticket channel no longer exists" } }).eq("id", openTicket.id).eq("guild_id", interaction.guild.id);
+  }
+  if (activeOpenTickets >= maxOpenPerUser) return interaction.editReply(`You can have up to ${maxOpenPerUser} open ticket${maxOpenPerUser === 1 ? "" : "s"} at a time.`);
+  const supportRoleIds = Array.isArray(config.supportRoleIds) ? config.supportRoleIds.filter((id): id is string => typeof id === "string") : [];
+  const nameTemplate = typeof config.ticketName === "string" ? config.ticketName : "ticket-{username}";
+  const subject = interaction.fields.getTextInputValue("subject").trim().slice(0, 80) || "General support";
+  const details = interaction.fields.getTextInputValue("details").trim().slice(0, 1500);
+  const channelName = nameTemplate.replaceAll("{username}", interaction.user.username.toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 20) || "member").replaceAll("{subject}", subject.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-|-$/g, "").slice(0, 24) || "support").slice(0, 90);
+  const channel = await interaction.guild.channels.create({
+    name: channelName,
+    type: ChannelType.GuildText,
+    parent: typeof config.categoryId === "string" && config.categoryId ? config.categoryId : undefined,
+    topic: `Glow ticket · ${subject} · opened by ${interaction.user.tag}`.slice(0, 1024),
+    permissionOverwrites: [
+      { id: interaction.guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
+      { id: interaction.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.AttachFiles] },
+      ...supportRoleIds.map((roleId) => ({ id: roleId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.AttachFiles] })),
+    ],
+  }).catch(() => null);
+  if (!channel) return interaction.editReply("Could not create the ticket. Check Glow's Manage Channels permission.");
+  const record = ticketRecordData({ channelId: channel.id, creatorId: interaction.user.id, creatorName: interaction.user.username, status: "open", categoryId: typeof config.categoryId === "string" ? config.categoryId : undefined, subject });
+  const { data: saved } = await database().from("guild_items").insert({ guild_id: interaction.guild.id, kind: "tickets", name: channel.name, enabled: true, data: { ...record, priority: "normal" } }).select("id").maybeSingle();
+  const staffMentions = config.notifyStaff === false ? "" : supportRoleIds.map((roleId) => `<@&${roleId}>`).join(" ");
+  const embed = await buildTicketEmbed(interaction.guild.name, interaction.user.id, "open", "normal");
+  embed.setTitle(`Glow Support · ${subject}`).addFields({ name: "Opened by", value: `<@${interaction.user.id}>`, inline: true }, { name: "Ticket ID", value: saved?.id ? `#${saved.id}` : channel.id, inline: true });
+  if (details) embed.addFields({ name: "Initial details", value: details.slice(0, 1024) });
+  await channel.send({ content: staffMentions || undefined, embeds: [embed], components: [new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId("glow_ticket_claim").setLabel("Claim").setEmoji("🛠️").setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId("glow_ticket_priority").setLabel("Priority").setEmoji("⚑").setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId("glow_ticket_close").setLabel("Close").setEmoji("🔒").setStyle(ButtonStyle.Danger))] });
+  await logGuildEvent({ guild: interaction.guild, event: "ticket", title: "Ticket opened", description: `<@${interaction.user.id}> opened **${subject}**.`, fields: [{ name: "Channel", value: `<#${channel.id}>`, inline: true }, { name: "Priority", value: "normal", inline: true }] });
+  return interaction.editReply(`Your private ticket is ready: <#${channel.id}>`);
 }
 
 async function handleTicketButton(interaction: ButtonInteraction) {
@@ -214,60 +322,52 @@ async function handleTicketButton(interaction: ButtonInteraction) {
 
   if (interaction.customId === "glow_ticket_open") {
     if (!settings.enabled) return interaction.reply({ content: "Support tickets are disabled for this server.", ephemeral: true });
-    const existing = await database().from("guild_items").select("id, data").eq("guild_id", interaction.guild.id).eq("kind", "tickets").contains("data", { creatorId: interaction.user.id, status: "open" }).maybeSingle();
-    if (existing.data?.data && typeof existing.data.data === "object" && "channelId" in existing.data.data) {
-      const existingChannel = await interaction.guild.channels.fetch(String(existing.data.data.channelId)).catch(() => null);
-      if (existingChannel) return interaction.reply({ content: `You already have an open ticket: <#${existingChannel.id}>`, ephemeral: true });
-    }
-    const supportRoleIds = Array.isArray(config.supportRoleIds) ? config.supportRoleIds.filter((id): id is string => typeof id === "string") : [];
-    const nameTemplate = typeof config.ticketName === "string" ? config.ticketName : "ticket-{username}";
-    const channelName = nameTemplate.replaceAll("{username}", interaction.user.username.toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 20) || "member").slice(0, 90);
-    const channel = await interaction.guild.channels.create({
-      name: channelName,
-      type: ChannelType.GuildText,
-      parent: typeof config.categoryId === "string" && config.categoryId ? config.categoryId : undefined,
-      permissionOverwrites: [
-        { id: interaction.guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
-        { id: interaction.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
-        ...supportRoleIds.map((roleId) => ({ id: roleId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] })),
-      ],
-    }).catch(() => null);
-    if (!channel) return interaction.reply({ content: "Could not create the ticket. Check Glow's Manage Channels permission.", ephemeral: true });
-    const record = ticketRecordData({ channelId: channel.id, creatorId: interaction.user.id, creatorName: interaction.user.username, status: "open", categoryId: typeof config.categoryId === "string" ? config.categoryId : undefined });
-    await database().from("guild_items").insert({ guild_id: interaction.guild.id, kind: "tickets", name: channel.name, enabled: true, data: record });
-    const staffMentions = config.notifyStaff === false ? "" : supportRoleIds.map((roleId) => `<@&${roleId}>`).join(" ");
-    await channel.send({ content: staffMentions || undefined, embeds: [await buildTicketEmbed(interaction.guild.name, interaction.user.id, "open")], components: [new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId("glow_ticket_claim").setLabel("Claim").setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId("glow_ticket_close").setLabel("Close").setStyle(ButtonStyle.Danger))] });
-    return interaction.reply({ content: `Your private ticket is ready: <#${channel.id}>`, ephemeral: true });
+    return interaction.showModal(ticketModal(config));
   }
 
   const ticket = await findTicket(interaction.channelId);
   if (!ticket) return interaction.reply({ content: "This channel is not a Glow ticket.", ephemeral: true });
   const ticketData = (ticket.data ?? {}) as Record<string, unknown>;
+  if (interaction.customId === "glow_ticket_priority") {
+    if (config.allowPriorityChange === false) return interaction.reply({ content: "Ticket priority changes are disabled for this server.", ephemeral: true });
+    if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageChannels)) return interaction.reply({ content: "Only support staff can change ticket priority.", ephemeral: true });
+    const currentPriority = String(ticketData.priority ?? "normal");
+    const nextPriority = currentPriority === "normal" ? "high" : currentPriority === "high" ? "urgent" : "normal";
+    await saveTicketRecord({ guildId: interaction.guild.id, channelId: interaction.channelId, creatorId: String(ticketData.creatorId ?? ""), creatorName: String(ticketData.creatorName ?? "member"), status: String(ticketData.status ?? "open") === "closed" ? "closed" : "open", id: ticket.id, claimedBy: String(ticketData.claimedBy ?? "") || null, priority: nextPriority, categoryId: String(ticketData.categoryId ?? ""), subject: String(ticketData.subject ?? "General support"), createdAt: String(ticketData.createdAt ?? "") || undefined });
+    await logGuildEvent({ guild: interaction.guild, event: "ticket", title: "Ticket priority changed", description: `<#${interaction.channelId}> is now **${nextPriority}** priority.`, fields: [{ name: "Changed by", value: `<@${interaction.user.id}>`, inline: true }] });
+    const updated = await buildTicketEmbed(interaction.guild.name, String(ticketData.creatorId ?? interaction.user.id), String(ticketData.status ?? "open") === "closed" ? "closed" : "open", nextPriority);
+    updated.setTitle(`Glow Support · ${String(ticketData.subject ?? "General support")}`);
+    return interaction.update({ embeds: [updated], components: [new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId("glow_ticket_claim").setLabel("Claim").setEmoji("🛠️").setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId("glow_ticket_priority").setLabel(`Priority: ${nextPriority}`).setEmoji("⚑").setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId("glow_ticket_close").setLabel("Close").setEmoji("🔒").setStyle(ButtonStyle.Danger))] });
+  }
   if (interaction.customId === "glow_ticket_delete") {
     if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageChannels) && String(ticketData.creatorId) !== interaction.user.id) return interaction.reply({ content: "Only the ticket creator or staff can delete this ticket.", ephemeral: true });
     await interaction.deferUpdate();
+    await logGuildEvent({ guild: interaction.guild, event: "ticket", title: "Ticket deleted", description: `<#${interaction.channelId}> was permanently deleted.`, fields: [{ name: "Deleted by", value: `<@${interaction.user.id}>`, inline: true }] });
     await interaction.channel?.delete("Glow ticket deleted").catch(() => undefined);
     await database().from("guild_items").delete().eq("id", ticket.id).eq("guild_id", interaction.guild.id);
     return;
   }
   if (interaction.customId === "glow_ticket_claim") {
     if (config.allowClaim === false) return interaction.reply({ content: "Ticket claiming is disabled.", ephemeral: true });
-    await saveTicketRecord({ guildId: interaction.guild.id, channelId: interaction.channelId, creatorId: String(ticketData.creatorId ?? ""), creatorName: String(ticketData.creatorName ?? "member"), status: "open", id: ticket.id, claimedBy: interaction.user.id, priority: String(ticketData.priority ?? "normal"), categoryId: String(ticketData.categoryId ?? "") });
+    await saveTicketRecord({ guildId: interaction.guild.id, channelId: interaction.channelId, creatorId: String(ticketData.creatorId ?? ""), creatorName: String(ticketData.creatorName ?? "member"), status: "open", id: ticket.id, claimedBy: interaction.user.id, priority: String(ticketData.priority ?? "normal"), categoryId: String(ticketData.categoryId ?? ""), subject: String(ticketData.subject ?? "General support"), createdAt: String(ticketData.createdAt ?? "") || undefined });
+    await logGuildEvent({ guild: interaction.guild, event: "ticket", title: "Ticket claimed", description: `<#${interaction.channelId}> was claimed by <@${interaction.user.id}>.` });
     return interaction.reply({ content: `Ticket claimed by **${interaction.user.username}**.`, ephemeral: false });
   }
   if (interaction.customId === "glow_ticket_reopen") {
     if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageChannels) && String(ticketData.creatorId) !== interaction.user.id) return interaction.reply({ content: "Only the ticket creator or staff can reopen this ticket.", ephemeral: true });
     if (interaction.channel && "setName" in interaction.channel) await interaction.channel.setName(String(ticket.name ?? "ticket").replace(/^closed-/, "")).catch(() => undefined);
-    await saveTicketRecord({ guildId: interaction.guild.id, channelId: interaction.channelId, creatorId: String(ticketData.creatorId ?? ""), creatorName: String(ticketData.creatorName ?? "member"), status: "open", id: ticket.id, claimedBy: String(ticketData.claimedBy ?? "") || null, priority: String(ticketData.priority ?? "normal"), categoryId: String(ticketData.categoryId ?? "") });
-    return interaction.update({ embeds: [await buildTicketEmbed(interaction.guild.name, String(ticketData.creatorId ?? interaction.user.id), "open", String(ticketData.priority ?? "normal"))], components: [new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId("glow_ticket_claim").setLabel("Claim").setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId("glow_ticket_close").setLabel("Close").setStyle(ButtonStyle.Danger))] });
+    await saveTicketRecord({ guildId: interaction.guild.id, channelId: interaction.channelId, creatorId: String(ticketData.creatorId ?? ""), creatorName: String(ticketData.creatorName ?? "member"), status: "open", id: ticket.id, claimedBy: String(ticketData.claimedBy ?? "") || null, priority: String(ticketData.priority ?? "normal"), categoryId: String(ticketData.categoryId ?? ""), subject: String(ticketData.subject ?? "General support"), createdAt: String(ticketData.createdAt ?? "") || undefined });
+    await logGuildEvent({ guild: interaction.guild, event: "ticket", title: "Ticket reopened", description: `<#${interaction.channelId}> was reopened by <@${interaction.user.id}>.` });
+    return interaction.update({ embeds: [await buildTicketEmbed(interaction.guild.name, String(ticketData.creatorId ?? interaction.user.id), "open", String(ticketData.priority ?? "normal"))], components: [new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId("glow_ticket_claim").setLabel("Claim").setEmoji("🛠️").setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId("glow_ticket_priority").setLabel(`Priority: ${String(ticketData.priority ?? "normal")}`).setEmoji("⚑").setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId("glow_ticket_close").setLabel("Close").setEmoji("🔒").setStyle(ButtonStyle.Danger))] });
   }
   if (interaction.customId === "glow_ticket_close") {
     if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageChannels) && String(ticketData.creatorId) !== interaction.user.id) return interaction.reply({ content: "Only the ticket creator or staff can close this ticket.", ephemeral: true });
     await postTicketTranscript(interaction.channel, ticket, config);
     if (interaction.channel && "setName" in interaction.channel) await interaction.channel.setName(`closed-${String(ticket.name ?? "ticket").replace(/^closed-/, "")}`.slice(0, 100)).catch(() => undefined);
     if (interaction.channel && "permissionOverwrites" in interaction.channel) await interaction.channel.permissionOverwrites.edit(String(ticketData.creatorId), { SendMessages: false }).catch(() => undefined);
-    await saveTicketRecord({ guildId: interaction.guild.id, channelId: interaction.channelId, creatorId: String(ticketData.creatorId ?? ""), creatorName: String(ticketData.creatorName ?? "member"), status: "closed", id: ticket.id, claimedBy: String(ticketData.claimedBy ?? "") || null, priority: String(ticketData.priority ?? "normal"), categoryId: String(ticketData.categoryId ?? "") });
-    return interaction.update({ embeds: [await buildTicketEmbed(interaction.guild.name, String(ticketData.creatorId ?? interaction.user.id), "closed", String(ticketData.priority ?? "normal"))], components: [new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId("glow_ticket_reopen").setLabel("Reopen").setStyle(ButtonStyle.Success), new ButtonBuilder().setCustomId("glow_ticket_delete").setLabel("Delete ticket").setStyle(ButtonStyle.Danger))] });
+    await saveTicketRecord({ guildId: interaction.guild.id, channelId: interaction.channelId, creatorId: String(ticketData.creatorId ?? ""), creatorName: String(ticketData.creatorName ?? "member"), status: "closed", id: ticket.id, claimedBy: String(ticketData.claimedBy ?? "") || null, priority: String(ticketData.priority ?? "normal"), categoryId: String(ticketData.categoryId ?? ""), subject: String(ticketData.subject ?? "General support"), createdAt: String(ticketData.createdAt ?? "") || undefined });
+    await logGuildEvent({ guild: interaction.guild, event: "ticket", title: "Ticket closed", description: `<#${interaction.channelId}> was closed by <@${interaction.user.id}>.`, fields: [{ name: "Transcript", value: config.transcriptEnabled === false ? "Disabled" : "Saved when available", inline: true }] });
+    return interaction.update({ embeds: [await buildTicketEmbed(interaction.guild.name, String(ticketData.creatorId ?? interaction.user.id), "closed", String(ticketData.priority ?? "normal"))], components: [new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId("glow_ticket_reopen").setLabel("Reopen").setEmoji("↩️").setStyle(ButtonStyle.Success), new ButtonBuilder().setCustomId("glow_ticket_delete").setLabel("Delete ticket").setEmoji("🗑️").setStyle(ButtonStyle.Danger))] });
   }
   return interaction.reply({ content: "Unknown ticket action.", ephemeral: true });
 }
@@ -459,6 +559,25 @@ async function handleLeveling(message: Message) {
   }
 }
 
+async function handleProtectionMessage(message: Message) {
+  if (!message.guild || !message.member || message.author.bot) return;
+  const settings = await moduleConfig(message.guild.id, "protection");
+  if (!settings.enabled || !message.mentions.everyone) return;
+  const rules = (settings.config.rules ?? {}) as Record<string, Record<string, unknown>>;
+  const rule = rules.everyoneMention;
+  if (!rule?.enabled) return;
+  const exemptRoles = Array.isArray(settings.config.exemptRoles) ? settings.config.exemptRoles.filter((id): id is string => typeof id === "string") : [];
+  if (message.member.roles.cache.some((role) => exemptRoles.includes(role.id))) return;
+  await message.delete("Glow anti-mention protection").catch(() => undefined);
+  await protectGuildEvent({
+    guild: message.guild,
+    event: "everyoneMention",
+    actorId: message.author.id,
+    targetId: message.author.id,
+    details: `@everyone or @here mention in #${message.channelId}`,
+  });
+}
+
 async function handleAutomations(message: Message) {
   if (!message.guild) return;
   const autoReply = await moduleConfig(message.guild.id, "autoreply");
@@ -616,6 +735,69 @@ function interactionPayload(interaction: ChatInputCommandInteraction): DiscordIn
   };
 }
 
+async function logAndProtect(
+  guild: GuildMember["guild"],
+  input: {
+    event: string;
+    auditType: AuditLogEvent;
+    targetId?: string;
+    details: string;
+    logEvent: Parameters<typeof logGuildEvent>[0]["event"];
+    title: string;
+    description: string;
+    fields?: Array<{ name: string; value: string; inline?: boolean }>;
+    channelId?: string;
+    roleIds?: string[];
+    isBot?: boolean;
+  },
+) {
+  const actorId = await recentAuditActor(guild, input.auditType, input.targetId);
+  await logGuildEvent({
+    guild,
+    event: input.logEvent,
+    title: input.title,
+    description: input.description,
+    fields: input.fields,
+    channelId: input.channelId,
+    roleIds: input.roleIds,
+    isBot: input.isBot,
+  });
+  await protectGuildEvent({
+    guild,
+    event: input.event,
+    actorId,
+    targetId: input.targetId,
+    details: input.details,
+  });
+}
+
+async function logMemberJoin(member: GuildMember) {
+  await logGuildEvent({
+    guild: member.guild,
+    event: "memberJoin",
+    title: "Member joined",
+    description: `<@${member.id}> joined the server.`,
+    fields: [
+      { name: "User", value: `${member.user.tag} (${member.id})`, inline: true },
+      { name: "Account created", value: `<t:${Math.floor(member.user.createdTimestamp / 1000)}:R>`, inline: true },
+    ],
+    roleIds: roleIds(member),
+    isBot: member.user.bot,
+  });
+}
+
+async function logMemberLeave(member: GuildMember) {
+  await logGuildEvent({
+    guild: member.guild,
+    event: "memberLeave",
+    title: "Member left",
+    description: `<@${member.id}> left the server.`,
+    fields: [{ name: "User", value: `${member.user.tag} (${member.id})`, inline: true }],
+    roleIds: roleIds(member),
+    isBot: member.user.bot,
+  });
+}
+
 client.once(Events.ClientReady, async (readyClient) => {
   console.log(
     `[Glow Bot] Online as ${readyClient.user.tag} in ${readyClient.guilds.cache.size} server(s)`,
@@ -625,6 +807,14 @@ client.once(Events.ClientReady, async (readyClient) => {
 });
 
 client.on(Events.InteractionCreate, async (interaction) => {
+  if (interaction.isModalSubmit() && interaction.customId === "glow_ticket_open_modal") {
+    await createTicketFromModal(interaction).catch((error: unknown) => {
+      console.error("[Glow Bot] Ticket modal failed", error);
+      if (!interaction.replied && !interaction.deferred) void interaction.reply({ content: "Could not open the ticket. Please check Glow's permissions and try again.", ephemeral: true }).catch(() => undefined);
+      else void interaction.editReply("Could not open the ticket. Please check Glow's permissions and try again.").catch(() => undefined);
+    });
+    return;
+  }
   if (interaction.isButton() && interaction.customId.startsWith("glow_ticket_")) {
     await handleTicketButton(interaction).catch((error: unknown) => {
       console.error("[Glow Bot] Ticket interaction failed", error);
@@ -688,6 +878,219 @@ client.on(Events.GuildMemberAdd, async (member) => {
   await handleAutoroles(member).catch((error: unknown) =>
     console.error("Auto-roles failed", error),
   );
+  await logMemberJoin(member).catch((error: unknown) => console.error("Member join log failed", error));
+  if (member.user.bot) {
+    await logAndProtect(member.guild, {
+      event: "botAdd",
+      auditType: AuditLogEvent.BotAdd,
+      targetId: member.id,
+      details: `Bot added: ${member.user.tag}`,
+      logEvent: "memberJoin",
+      title: "Bot added",
+      description: `<@${member.id}> was added to the server.`,
+      fields: [{ name: "Bot", value: `${member.user.tag} (${member.id})`, inline: true }],
+      isBot: true,
+    }).catch((error: unknown) => console.error("Bot add protection failed", error));
+  }
+});
+
+client.on(Events.GuildMemberRemove, async (member) => {
+  await logMemberLeave(member).catch((error: unknown) => console.error("Member leave log failed", error));
+  const actorId = await recentAuditActor(member.guild, AuditLogEvent.MemberKick, member.id);
+  if (actorId) {
+    await protectGuildEvent({ guild: member.guild, event: "memberKick", actorId, targetId: member.id, details: `Member kicked: ${member.user.tag}` }).catch((error: unknown) => console.error("Kick protection failed", error));
+  }
+});
+
+client.on(Events.GuildBanAdd, async (ban) => {
+  await logAndProtect(ban.guild, {
+    event: "memberBan",
+    auditType: AuditLogEvent.MemberBanAdd,
+    targetId: ban.user.id,
+    details: `Member ban for ${ban.user.tag}`,
+    logEvent: "memberBan",
+    title: "Member banned",
+    description: `<@${ban.user.id}> was banned from the server.`,
+    fields: [{ name: "User", value: `${ban.user.tag} (${ban.user.id})`, inline: true }],
+    isBot: ban.user.bot,
+  }).catch((error: unknown) => console.error("Ban log/protection failed", error));
+});
+
+client.on(Events.GuildUpdate, async (oldGuild, newGuild) => {
+  if (oldGuild.name === newGuild.name && oldGuild.icon === newGuild.icon && oldGuild.verificationLevel === newGuild.verificationLevel) return;
+  await logAndProtect(newGuild, {
+    event: "serverUpdate",
+    auditType: AuditLogEvent.GuildUpdate,
+    targetId: newGuild.id,
+    details: "Server settings were updated",
+    logEvent: "moderation",
+    title: "Server updated",
+    description: "Server name, icon or verification settings changed.",
+    fields: [{ name: "Server", value: newGuild.name, inline: true }],
+  }).catch((error: unknown) => console.error("Server update log/protection failed", error));
+});
+
+client.on(Events.GuildBanRemove, async (ban) => {
+  const actorId = await recentAuditActor(ban.guild, AuditLogEvent.MemberBanRemove, ban.user.id);
+  await logGuildEvent({
+    guild: ban.guild,
+    event: "memberUnban",
+    title: "Member unbanned",
+    description: `<@${ban.user.id}> was unbanned from the server.`,
+    fields: [
+      { name: "User", value: `${ban.user.tag} (${ban.user.id})`, inline: true },
+      ...(actorId ? [{ name: "Moderator", value: `<@${actorId}>`, inline: true }] : []),
+    ],
+    isBot: ban.user.bot,
+  }).catch((error: unknown) => console.error("Unban log failed", error));
+});
+
+client.on(Events.MessageDelete, async (message) => {
+  if (!message.guild) return;
+  await logGuildEvent({
+    guild: message.guild,
+    event: "messageDelete",
+    title: "Message deleted",
+    description: `A message was deleted in <#${message.channelId}>.`,
+    fields: [
+      ...(message.author ? [{ name: "Author", value: `${message.author.tag} (${message.author.id})`, inline: true }] : []),
+      { name: "Channel", value: `<#${message.channelId}>`, inline: true },
+    ],
+    channelId: message.channelId,
+    isBot: message.author?.bot,
+    messageContent: message.content || undefined,
+  });
+});
+
+client.on(Events.MessageUpdate, async (oldMessage, newMessage) => {
+  if (!newMessage.guild) return;
+  const before = oldMessage.content || "(content unavailable)";
+  const after = newMessage.content || "(content unavailable)";
+  if (before === after) return;
+  await logGuildEvent({
+    guild: newMessage.guild,
+    event: "messageUpdate",
+    title: "Message edited",
+    description: `A message was edited in <#${newMessage.channelId}>.`,
+    fields: [
+      ...(newMessage.author ? [{ name: "Author", value: `${newMessage.author.tag} (${newMessage.author.id})`, inline: true }] : []),
+      { name: "Jump", value: `[Open message](${newMessage.url})`, inline: true },
+    ],
+    channelId: newMessage.channelId,
+    isBot: newMessage.author?.bot,
+    messageContent: `Before: ${before}\nAfter: ${after}`,
+  });
+});
+
+client.on(Events.ChannelCreate, async (channel) => {
+  await logAndProtect(channel.guild, {
+    event: "channelCreate",
+    auditType: AuditLogEvent.ChannelCreate,
+    targetId: channel.id,
+    details: `Channel created: ${channel.name}`,
+    logEvent: "channelCreate",
+    title: "Channel created",
+    description: `**${channel.name}** was created.`,
+    fields: [{ name: "Channel", value: `<#${channel.id}> (${channel.type})`, inline: true }],
+    channelId: channel.id,
+  }).catch((error: unknown) => console.error("Channel create log/protection failed", error));
+});
+
+client.on(Events.ChannelDelete, async (channel) => {
+  await logAndProtect(channel.guild, {
+    event: "channelDelete",
+    auditType: AuditLogEvent.ChannelDelete,
+    targetId: channel.id,
+    details: `Channel deleted: ${channel.name}`,
+    logEvent: "channelDelete",
+    title: "Channel deleted",
+    description: `**${channel.name}** was deleted.`,
+    fields: [{ name: "Channel", value: `${channel.name} (${channel.id})`, inline: true }],
+  }).catch((error: unknown) => console.error("Channel delete log/protection failed", error));
+});
+
+client.on(Events.ChannelUpdate, async (oldChannel, newChannel) => {
+  if (oldChannel.name === newChannel.name && oldChannel.parentId === newChannel.parentId) return;
+  await logGuildEvent({
+    guild: newChannel.guild,
+    event: "channelUpdate",
+    title: "Channel updated",
+    description: `**${newChannel.name}** was updated.`,
+    fields: [
+      { name: "Before", value: oldChannel.name, inline: true },
+      { name: "After", value: newChannel.name, inline: true },
+    ],
+    channelId: newChannel.id,
+  }).catch((error: unknown) => console.error("Channel update log failed", error));
+});
+
+client.on(Events.RoleCreate, async (role) => {
+  await logAndProtect(role.guild, {
+    event: "roleCreate",
+    auditType: AuditLogEvent.RoleCreate,
+    targetId: role.id,
+    details: `Role created: ${role.name}`,
+    logEvent: "roleCreate",
+    title: "Role created",
+    description: `The role **${role.name}** was created.`,
+    fields: [{ name: "Role", value: roleDetails(role), inline: true }],
+  }).catch((error: unknown) => console.error("Role create log/protection failed", error));
+});
+
+client.on(Events.RoleDelete, async (role) => {
+  await logAndProtect(role.guild, {
+    event: "roleDelete",
+    auditType: AuditLogEvent.RoleDelete,
+    targetId: role.id,
+    details: `Role deleted: ${role.name}`,
+    logEvent: "roleDelete",
+    title: "Role deleted",
+    description: `The role **${role.name}** was deleted.`,
+    fields: [{ name: "Role", value: roleDetails(role), inline: true }],
+  }).catch((error: unknown) => console.error("Role delete log/protection failed", error));
+});
+
+client.on(Events.RoleUpdate, async (oldRole, newRole) => {
+  if (oldRole.name === newRole.name && oldRole.color === newRole.color && oldRole.permissions.bitfield === newRole.permissions.bitfield) return;
+  await logGuildEvent({
+    guild: newRole.guild,
+    event: "roleUpdate",
+    title: "Role updated",
+    description: `The role **${newRole.name}** was updated.`,
+    fields: [
+      { name: "Before", value: oldRole.name, inline: true },
+      { name: "After", value: newRole.name, inline: true },
+    ],
+  }).catch((error: unknown) => console.error("Role update log failed", error));
+});
+
+client.on(Events.WebhooksUpdate, async (channel) => {
+  await logAndProtect(channel.guild, {
+    event: "webhookCreate",
+    auditType: AuditLogEvent.WebhookCreate,
+    details: `Webhook activity in ${channel.name}`,
+    logEvent: "channelUpdate",
+    title: "Webhook activity",
+    description: `A webhook was created or updated in **${channel.name}**.`,
+    channelId: channel.id,
+  }).catch((error: unknown) => console.error("Webhook log/protection failed", error));
+});
+
+client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
+  const rolesChanged = oldMember.roles.cache.size !== newMember.roles.cache.size || oldMember.roles.cache.some((role) => !newMember.roles.cache.has(role.id));
+  if (!rolesChanged && oldMember.nickname === newMember.nickname) return;
+  await logAndProtect(newMember.guild, {
+    event: rolesChanged ? "massRoleChange" : "memberUpdate",
+    auditType: rolesChanged ? AuditLogEvent.MemberRoleUpdate : AuditLogEvent.MemberUpdate,
+    targetId: newMember.id,
+    details: `Member update for ${newMember.user.tag}`,
+    logEvent: "memberUpdate",
+    title: rolesChanged ? "Member roles updated" : "Member updated",
+    description: `<@${newMember.id}> had a profile or role update.`,
+    fields: [{ name: "Member", value: `${newMember.user.tag} (${newMember.id})`, inline: true }],
+    roleIds: roleIds(newMember),
+    isBot: newMember.user.bot,
+  }).catch((error: unknown) => console.error("Member update log/protection failed", error));
 });
 
 client.on(Events.MessageCreate, async (message) => {
@@ -697,6 +1100,9 @@ client.on(Events.MessageCreate, async (message) => {
       `[Glow Bot] MessageCreate guild=${message.guild.id} channel=${message.channelId} authorBot=${message.author.bot} contentLength=${contentLength}`,
     );
   }
+  await handleProtectionMessage(message).catch((error: unknown) =>
+    console.error("Protection message check failed", error),
+  );
   await handleAutomations(message).catch((error: unknown) =>
     console.error("Automation failed", error),
   );
@@ -707,6 +1113,21 @@ client.on(Events.VoiceStateUpdate, async (oldState, newState) => {
   await handleTempVoice(oldState, newState).catch((error: unknown) =>
     console.error("Temp voice failed", error),
   );
+  if (oldState.channelId === newState.channelId && oldState.serverMute === newState.serverMute && oldState.serverDeaf === newState.serverDeaf) return;
+  const member = newState.member ?? oldState.member;
+  if (member) {
+    await logGuildEvent({
+      guild: newState.guild,
+      event: "voiceState",
+      title: "Voice activity",
+      description: `<@${member.id}> changed voice state.`,
+      fields: [
+        { name: "Before", value: oldState.channelId ? `<#${oldState.channelId}>` : "Not connected", inline: true },
+        { name: "After", value: newState.channelId ? `<#${newState.channelId}>` : "Not connected", inline: true },
+      ],
+      isBot: member.user.bot,
+    });
+  }
 });
 
 client.on(Events.Error, (error) => console.error("[Glow Bot] Discord client error", error));
