@@ -862,7 +862,7 @@ function TicketsPage({
       toast.success(t("تم نشر لوحة التذاكر في Discord", "Ticket panel published to Discord"));
       qc.invalidateQueries({ queryKey: ["workspace", guildId] });
     },
-    onError: () => toast.error(t("تعذر نشر لوحة التذاكر", "Could not publish ticket panel")),
+    onError: (error: unknown) => toast.error(ticketPublishError(error, t)),
   });
 
   const tickets = useQuery<GuildItem[]>({
@@ -1847,4 +1847,25 @@ function formatDate(value: unknown) {
   const date = new Date(String(value));
   if (Number.isNaN(date.getTime())) return String(value);
   return new Intl.DateTimeFormat("ar", { day: "numeric", month: "short" }).format(date);
+}
+
+function ticketPublishError(error: unknown, t: (arabic: string, english: string) => string) {
+  const raw = error instanceof Error ? error.message : String(error);
+  const code = raw.match(/TICKET_[A-Z0-9_]+|BOT_[A-Z0-9_]+|UNAUTHENTICATED|FORBIDDEN/)?.[0] ?? raw;
+  const messages: Record<string, [string, string]> = {
+    UNAUTHENTICATED: ["انتهت جلسة Discord. سجّل الدخول من جديد ثم حاول.", "Your Discord session expired. Sign in again and retry."],
+    FORBIDDEN: ["لا تملك صلاحية إدارة هذا السيرفر.", "You do not have permission to manage this server."],
+    BOT_NOT_IN_GUILD: ["البوت غير موجود في هذا السيرفر. أضفه أولاً ثم أعد المحاولة.", "Glow is not in this server. Add the bot first, then retry."],
+    TICKET_PANEL_CHANNEL_REQUIRED: ["اختر قناة لوحة التذاكر أولاً.", "Choose a ticket panel channel first."],
+    TICKET_PANEL_DISABLED: ["نظام التذاكر أو لوحة النشر معطل لهذا السيرفر.", "Tickets or the panel are disabled for this server."],
+    TICKET_PANEL_CHANNEL_NOT_FOUND: ["قناة لوحة التذاكر غير موجودة أو تم حذفها. اختر قناة جديدة.", "The panel channel was deleted or cannot be found. Choose another channel."],
+    TICKET_PANEL_CHANNEL_FORBIDDEN: ["البوت لا يستطيع قراءة قناة اللوحة. تحقق من صلاحية View Channel.", "Glow cannot read the panel channel. Check its View Channel permission."],
+    TICKET_PANEL_CHANNEL_WRONG_GUILD: ["القناة المختارة ليست من نفس السيرفر.", "The selected channel belongs to a different server."],
+    TICKET_PANEL_CHANNEL_NOT_TEXT: ["اختر قناة نصية أو قناة إعلانات، وليس تصنيفاً أو قناة صوتية.", "Choose a text or announcement channel, not a category or voice channel."],
+    TICKET_PANEL_BOT_UNAUTHORIZED: ["توكن البوت غير صالح حالياً. تحقق من إعدادات Railway.", "The bot token was rejected. Check the Railway bot environment variables."],
+    TICKET_PANEL_BOT_MISSING_PERMISSIONS: ["البوت لا يملك صلاحية إرسال الرسائل أو التضمينات في هذه القناة.", "Glow is missing permission to send messages or embeds in this channel."],
+  };
+  const known = messages[code];
+  if (known) return t(known[0], known[1]);
+  return t("تعذر نشر لوحة التذاكر. تحقق من القناة وصلاحيات البوت ثم حاول مرة أخرى.", `Could not publish the ticket panel${raw && raw !== "Error" ? `: ${raw.slice(0, 120)}` : "."}`);
 }

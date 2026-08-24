@@ -36,6 +36,7 @@ export interface DiscordChannel {
   type: number;
   parent_id: string | null;
   position: number;
+  guild_id?: string;
 }
 
 async function botFetch<T>(path: string): Promise<T | null> {
@@ -99,6 +100,10 @@ export async function fetchGuildRoles(guildId: string) {
 
 export async function fetchGuildChannels(guildId: string) {
   return (await botFetch<DiscordChannel[]>(`/guilds/${guildId}/channels`)) ?? [];
+}
+
+export async function inspectDiscordChannel(channelId: string) {
+  return await botFetchResult<DiscordChannel>(`/channels/${encodeURIComponent(channelId)}`);
 }
 
 export class DiscordOAuthError extends Error {
@@ -226,7 +231,7 @@ export async function upsertChannelMessage(
   const path = messageId
     ? `${API}/channels/${channelId}/messages/${messageId}`
     : `${API}/channels/${channelId}/messages`;
-  const res = await fetch(path, {
+  let res = await fetch(path, {
     method: messageId ? "PATCH" : "POST",
     headers: {
       Authorization: `Bot ${botToken()}`,
@@ -234,6 +239,17 @@ export async function upsertChannelMessage(
     },
     body: JSON.stringify(payload),
   });
+  // A previously published panel may have been deleted manually. Recover by creating a fresh panel.
+  if (!res.ok && messageId && res.status === 404) {
+    res = await fetch(`${API}/channels/${channelId}/messages`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bot ${botToken()}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+  }
   if (!res.ok) return { ok: false as const, status: res.status, error: await res.text() };
   const data = (await res.json()) as { id: string };
   return { ok: true as const, id: data.id };
