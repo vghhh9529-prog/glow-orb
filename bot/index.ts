@@ -73,7 +73,15 @@ const GLOW_CHANNELS = {
   suggestions: "1541166392227799171",
 } as const;
 
-const RELEASE_NOTES = process.env["RELEASE_NOTES"] ?? "Improved protection, advanced logs, support tickets and community tools.";
+const RELEASE_NOTES =
+  process.env["GLOW_RELEASE_NOTES"] ??
+  [
+    "**Dashboard login:** Returning signed-in users now go straight to the Dashboard instead of seeing the Login page again.",
+    "**Persistent sessions:** Login sessions now last 30 days and refresh while the account is active, so normal use does not force repeated Discord sign-ins.",
+    "**Ticket publishing:** Server owners, Administrators and members with Manage Server can now pass the server access check when publishing the support panel.",
+    "**Permission recovery:** The dashboard can verify the member's real Discord roles through Glow when OAuth permission data is incomplete or stale.",
+    "**Branding:** The site tab icon now uses the small Glow bot logo.",
+  ].join("\n");
 
 function database() {
   return supabaseAdmin;

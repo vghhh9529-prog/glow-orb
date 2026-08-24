@@ -1,7 +1,8 @@
-import { getRequestHeader } from "@tanstack/react-start/server";
+import { getRequestHeader, setResponseHeader } from "@tanstack/react-start/server";
 
 export const SESSION_COOKIE = "glow_session";
-export const SESSION_TTL_DAYS = 14;
+export const SESSION_TTL_DAYS = 30;
+const SESSION_REFRESH_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
 export interface SessionUser {
   id: string;
@@ -31,10 +32,23 @@ export async function getSessionUser(): Promise<SessionUser | null> {
     .eq("token", token)
     .maybeSingle();
   if (!session) return null;
-  if (new Date(session.expires_at).getTime() < Date.now()) {
+  const expiresAt = new Date(session.expires_at).getTime();
+  if (expiresAt < Date.now()) {
     await supabaseAdmin.from("app_sessions").delete().eq("token", token);
     return null;
   }
+
+  if (expiresAt - Date.now() < SESSION_REFRESH_WINDOW_MS) {
+    const refreshedExpiresAt = new Date(Date.now() + SESSION_TTL_DAYS * 24 * 60 * 60 * 1000);
+    const { error } = await supabaseAdmin
+      .from("app_sessions")
+      .update({ expires_at: refreshedExpiresAt.toISOString() })
+      .eq("token", token);
+    if (!error) {
+      setResponseHeader("Set-Cookie", buildSessionCookie(token, SESSION_TTL_DAYS * 24 * 60 * 60));
+    }
+  }
+
   const { data: user } = await supabaseAdmin
     .from("discord_users")
     .select("id, username, global_name, avatar, email")

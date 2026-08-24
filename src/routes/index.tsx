@@ -1,4 +1,4 @@
-import { Link, createFileRoute } from "@tanstack/react-router";
+import { Link, createFileRoute, redirect } from "@tanstack/react-router";
 import {
   ArrowDown,
   ArrowUpRight,
@@ -29,8 +29,13 @@ import communityPreview from "@/assets/glow-community-preview.jpg";
 import { useI18n } from "@/lib/i18n";
 import { SLASH_COMMANDS } from "@/lib/slash-commands";
 import { SUPPORT_SERVER_URL, botInviteUrl } from "@/lib/discord";
+import { getMe } from "@/lib/api.functions";
 
 export const Route = createFileRoute("/")({
+  beforeLoad: async () => {
+    const me = await getMe().catch(() => null);
+    if (me) throw redirect({ to: "/dashboard" });
+  },
   head: () => ({
     meta: [
       { title: "Glow — Discord Community Control Center" },
