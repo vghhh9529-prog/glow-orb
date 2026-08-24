@@ -78,15 +78,17 @@ export async function fetchGuildChannels(guildId: string) {
 
 export async function exchangeCode(code: string, redirectUri: string) {
   const body = new URLSearchParams({
-    client_id: CLIENT_ID,
-    client_secret: clientSecret(),
     grant_type: "authorization_code",
     code,
     redirect_uri: redirectUri,
   });
+  const basic = btoa(`${CLIENT_ID}:${clientSecret()}`);
   const res = await fetch(`${API}/oauth2/token`, {
     method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    headers: {
+      Authorization: `Basic ${basic}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
     body,
   });
   if (!res.ok) throw new Error(`Token exchange failed: ${res.status} ${await res.text()}`);
@@ -133,7 +135,12 @@ export async function registerSlashCommands(commands: unknown[]) {
   return (await res.json()) as unknown[];
 }
 
-export async function timeoutMember(guildId: string, userId: string, until: string | null, reason: string) {
+export async function timeoutMember(
+  guildId: string,
+  userId: string,
+  until: string | null,
+  reason: string,
+) {
   const res = await fetch(`${API}/guilds/${guildId}/members/${userId}`, {
     method: "PATCH",
     headers: {
@@ -171,9 +178,11 @@ export async function putAutoModRule(guildId: string, rule: Record<string, unkno
 }
 
 export async function listAutoModRules(guildId: string) {
-  return (await botFetch<Array<{ id: string; name: string; enabled: boolean; trigger_type: number }>>(
-    `/guilds/${guildId}/auto-moderation/rules`,
-  )) ?? [];
+  return (
+    (await botFetch<Array<{ id: string; name: string; enabled: boolean; trigger_type: number }>>(
+      `/guilds/${guildId}/auto-moderation/rules`,
+    )) ?? []
+  );
 }
 
 export async function deleteAutoModRule(guildId: string, ruleId: string) {
