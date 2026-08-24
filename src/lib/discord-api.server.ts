@@ -1,4 +1,4 @@
-const API = "https://discord.com/api/v10";
+export const API = "https://discord.com/api/v10";
 
 export function botToken(): string {
   const token = process.env["DISCORD_BOT_TOKEN"];

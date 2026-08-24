@@ -1,10 +1,12 @@
 import {
+  API,
   banMember,
   clearChannelMessages,
   fetchBotGuild,
   fetchDiscordUser,
   fetchGuildMember,
   fetchGuildRoles,
+  CLIENT_ID,
   kickMember,
   timeoutMember,
   unbanMember,
@@ -362,6 +364,35 @@ export interface DiscordCardInteractionResult {
   filename: string;
   title: string;
 }
+
+export async function sendDiscordCardFollowup(
+  payload: DiscordInteractionPayload,
+  card: DiscordCardInteractionResult,
+) {
+  if (!payload.token) throw new Error("Missing Discord interaction token");
+  const form = new FormData();
+  form.append(
+    "payload_json",
+    JSON.stringify({
+      embeds: [
+        {
+          title: card.title,
+          description: "English profile card · live Discord and Glow data",
+          color: 0x7c5cff,
+          image: { url: `attachment://${card.filename}` },
+          footer: { text: "Glow · Community progression" },
+        },
+      ],
+    }),
+  );
+  form.append("files[0]", new Blob([new Uint8Array(card.buffer)], { type: "image/png" }), card.filename);
+  const response = await fetch(`${API}/webhooks/${CLIENT_ID}/${payload.token}`, {
+    method: "POST",
+    body: form,
+  });
+  if (!response.ok) throw new Error(`Discord card follow-up failed: ${response.status} ${await response.text()}`);
+}
+
 
 /** Gateway-only card path. The HTTP interaction endpoint remains JSON/Embed compatible. */
 export async function handleDiscordCardCommand(
