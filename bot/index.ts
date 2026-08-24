@@ -168,32 +168,51 @@ async function buildTicketEmbed(guildName: string, creatorId: string, status: "o
   return new EmbedBuilder()
     .setColor(status === "open" ? 0x7c5cff : 0x64748b)
     .setTitle(status === "open" ? "Glow Support Ticket" : "Ticket closed")
-    .setDescription(status === "open" ? `Welcome <@${creatorId}>. Tell us what you need and the support team will be with you shortly.` : "This ticket is closed. You can reopen it if you still need help.")
+    .setDescription(status === "open" ? `Welcome <@${creatorId}>. Tell us what you need and the support team will be with you shortly.` : "This ticket is closed. The HTML transcript was saved when the ticket was closed. Reopen it if you still need help, or delete the ticket permanently when you are done.")
     .addFields({ name: "Priority", value: priority, inline: true }, { name: "Status", value: status, inline: true })
     .setFooter({ text: `${guildName} · Glow Support` });
 }
 
+function escapeHtml(value: string) {
+  return value.replace(/[&<>\"']/g, (character) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+  })[character] ?? character);
+}
+
 async function postTicketTranscript(channel: Message["channel"], ticket: { id?: string; data?: Record<string, unknown> }, config: Record<string, unknown>) {
-  const transcriptChannelId = typeof config.transcriptChannelId === "string" ? config.transcriptChannelId : "";
-  if (config.transcriptEnabled === false || !transcriptChannelId || !channel.isTextBased()) return;
+  const transcriptChannelId = typeof config["transcriptChannelId"] === "string" ? config["transcriptChannelId"] : "";
+  if (config["transcriptEnabled"] === false || !transcriptChannelId || !channel.isTextBased()) return;
   const transcriptChannel = await channel.client.channels.fetch(transcriptChannelId).catch(() => null);
   if (!transcriptChannel || !transcriptChannel.isTextBased() || !("send" in transcriptChannel)) return;
   const messages = await channel.messages.fetch({ limit: 100 }).catch(() => null);
-  const content = messages
-    ? [...messages.values()].reverse().map((message) => `[${message.createdAt.toISOString()}] ${message.author.tag}: ${message.cleanContent}`).join("\n")
-    : "No messages could be fetched.";
+  const channelName = "name" in channel && typeof channel.name === "string" ? channel.name : channel.id;
+  const ticketData = ticket.data ?? {};
+  const rows = messages
+    ? [...messages.values()].reverse().map((message) => {
+        const attachments = [...message.attachments.values()]
+          .map((attachment) => `<a href="${escapeHtml(attachment.url)}">${escapeHtml(attachment.name ?? "attachment")}</a>`)
+          .join(" · ");
+        return `<article class="message"><div class="meta"><strong>${escapeHtml(message.author.tag)}</strong><time>${escapeHtml(message.createdAt.toISOString())}</time></div><p>${escapeHtml(message.cleanContent || "").replaceAll("\n", "<br>") || "<em>empty message</em>"}</p>${attachments ? `<div class="attachments">${attachments}</div>` : ""}</article>`;
+      }).join("\n")
+    : `<p class="empty">No messages could be fetched.</p>`;
+  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Glow ticket transcript · ${escapeHtml(channelName)}</title><style>body{margin:0;background:#090b18;color:#eef0ff;font:15px/1.6 Inter,system-ui,sans-serif;padding:32px}.wrap{max-width:900px;margin:auto}.hero{background:linear-gradient(135deg,#181332,#0c1630);border:1px solid #343064;border-radius:22px;padding:24px;margin-bottom:20px}.eyebrow{color:#a996ff;text-transform:uppercase;letter-spacing:.16em;font-size:11px;font-weight:700}.meta{display:flex;gap:14px;align-items:center;color:#a9acc8}.meta time{font-size:12px}.message{background:#11152a;border:1px solid #24294a;border-radius:16px;padding:14px 16px;margin:10px 0}.message p{margin:8px 0 0;white-space:normal}.attachments{font-size:12px;color:#a996ff}.attachments a{color:#a996ff}</style></head><body><main class="wrap"><section class="hero"><div class="eyebrow">Glow Support</div><h1>${escapeHtml(channelName)}</h1><p>Ticket transcript · ${escapeHtml(String(ticket.id ?? "unknown"))}</p><p>Creator: ${escapeHtml(String(ticketData["creatorName"] ?? "unknown"))}</p></section><section>${rows}</section></main></body></html>`;
   await transcriptChannel.send({
-    embeds: [new EmbedBuilder().setColor(0x64748b).setTitle("Ticket transcript").setDescription(`Ticket: ${ticket.id ?? "unknown"}\n${content.slice(0, 3800)}`)],
-  }).catch((error) => console.error("[Glow Bot] Ticket transcript failed", error));
+    embeds: [new EmbedBuilder().setColor(0x64748b).setTitle("Ticket transcript saved").setDescription(`HTML transcript for **${channelName}** is attached below.`)],
+    files: [{ attachment: Buffer.from(html, "utf8"), name: `glow-${channel.id}-transcript.html` }],
+  }).catch((error) => console.error("[Glow Bot] Ticket HTML transcript failed", error));
 }
 
 async function handleTicketButton(interaction: ButtonInteraction) {
   if (!interaction.guild) return interaction.reply({ content: "Tickets are available inside a server only.", ephemeral: true });
   const settings = await ticketConfig(interaction.guild.id);
   const config = settings.config;
-  if (!settings.enabled) return interaction.reply({ content: "Support tickets are disabled for this server.", ephemeral: true });
 
   if (interaction.customId === "glow_ticket_open") {
+    if (!settings.enabled) return interaction.reply({ content: "Support tickets are disabled for this server.", ephemeral: true });
     const existing = await database().from("guild_items").select("id, data").eq("guild_id", interaction.guild.id).eq("kind", "tickets").contains("data", { creatorId: interaction.user.id, status: "open" }).maybeSingle();
     if (existing.data?.data && typeof existing.data.data === "object" && "channelId" in existing.data.data) {
       const existingChannel = await interaction.guild.channels.fetch(String(existing.data.data.channelId)).catch(() => null);
@@ -223,6 +242,13 @@ async function handleTicketButton(interaction: ButtonInteraction) {
   const ticket = await findTicket(interaction.channelId);
   if (!ticket) return interaction.reply({ content: "This channel is not a Glow ticket.", ephemeral: true });
   const ticketData = (ticket.data ?? {}) as Record<string, unknown>;
+  if (interaction.customId === "glow_ticket_delete") {
+    if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageChannels) && String(ticketData.creatorId) !== interaction.user.id) return interaction.reply({ content: "Only the ticket creator or staff can delete this ticket.", ephemeral: true });
+    await interaction.deferUpdate();
+    await interaction.channel?.delete("Glow ticket deleted").catch(() => undefined);
+    await database().from("guild_items").delete().eq("id", ticket.id).eq("guild_id", interaction.guild.id);
+    return;
+  }
   if (interaction.customId === "glow_ticket_claim") {
     if (config.allowClaim === false) return interaction.reply({ content: "Ticket claiming is disabled.", ephemeral: true });
     await saveTicketRecord({ guildId: interaction.guild.id, channelId: interaction.channelId, creatorId: String(ticketData.creatorId ?? ""), creatorName: String(ticketData.creatorName ?? "member"), status: "open", id: ticket.id, claimedBy: interaction.user.id, priority: String(ticketData.priority ?? "normal"), categoryId: String(ticketData.categoryId ?? "") });
@@ -240,7 +266,7 @@ async function handleTicketButton(interaction: ButtonInteraction) {
     if (interaction.channel && "setName" in interaction.channel) await interaction.channel.setName(`closed-${String(ticket.name ?? "ticket").replace(/^closed-/, "")}`.slice(0, 100)).catch(() => undefined);
     if (interaction.channel && "permissionOverwrites" in interaction.channel) await interaction.channel.permissionOverwrites.edit(String(ticketData.creatorId), { SendMessages: false }).catch(() => undefined);
     await saveTicketRecord({ guildId: interaction.guild.id, channelId: interaction.channelId, creatorId: String(ticketData.creatorId ?? ""), creatorName: String(ticketData.creatorName ?? "member"), status: "closed", id: ticket.id, claimedBy: String(ticketData.claimedBy ?? "") || null, priority: String(ticketData.priority ?? "normal"), categoryId: String(ticketData.categoryId ?? "") });
-    return interaction.update({ embeds: [await buildTicketEmbed(interaction.guild.name, String(ticketData.creatorId ?? interaction.user.id), "closed", String(ticketData.priority ?? "normal"))], components: [new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId("glow_ticket_reopen").setLabel("Reopen").setStyle(ButtonStyle.Success))] });
+    return interaction.update({ embeds: [await buildTicketEmbed(interaction.guild.name, String(ticketData.creatorId ?? interaction.user.id), "closed", String(ticketData.priority ?? "normal"))], components: [new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId("glow_ticket_reopen").setLabel("Reopen").setStyle(ButtonStyle.Success), new ButtonBuilder().setCustomId("glow_ticket_delete").setLabel("Delete ticket").setStyle(ButtonStyle.Danger))] });
   }
   return interaction.reply({ content: "Unknown ticket action.", ephemeral: true });
 }
