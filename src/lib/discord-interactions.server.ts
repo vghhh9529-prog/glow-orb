@@ -3,12 +3,14 @@ import {
   clearChannelMessages,
   fetchBotGuild,
   fetchDiscordUser,
+  fetchGuildMember,
   fetchGuildRoles,
   kickMember,
   timeoutMember,
   unbanMember,
 } from "./discord-api.server";
 import { ensureGuildRow } from "./guilds.server";
+import { discordAccountCreatedAt, renderProfileCard, renderUserCard } from "./card-renderer.server";
 
 const DAILY_COOLDOWN_MS = 12 * 60 * 60_000;
 const DAILY_BASE = 250;
@@ -20,6 +22,7 @@ export interface InteractionUser {
   username: string;
   global_name?: string | null;
   avatar?: string | null;
+  created_at?: string;
 }
 
 export interface DiscordInteractionOption {
@@ -299,6 +302,82 @@ async function userInfo(payload: DiscordInteractionPayload, user: InteractionUse
   return interactionResponse(
     `**${displayName}**\nاسم الحساب: \`${target.username}\`\nالمعرّف: \`${target.id}\`\nالصورة: ${target.avatar ? target.avatar : "لا توجد صورة"}`,
   );
+}
+
+function accountAvatarUrl(user: InteractionUser) {
+  if (user.avatar?.startsWith("http")) return user.avatar;
+  if (user.avatar) {
+    const extension = user.avatar.startsWith("a_") ? "gif" : "png";
+    return `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.${extension}?size=512`;
+  }
+  try {
+    const index = Number((BigInt(user.id) >> 22n) % 6n);
+    return `https://cdn.discordapp.com/embed/avatars/${index}.png`;
+  } catch {
+    return "https://cdn.discordapp.com/embed/avatars/0.png";
+  }
+}
+
+async function memberCardStats(payload: DiscordInteractionPayload, target: InteractionUser) {
+  const guildId = payload.guild_id;
+  const database = await db();
+  const [guild, guildMember, levelResult] = await Promise.all([
+    guildId ? fetchBotGuild(guildId) : Promise.resolve(null),
+    guildId ? fetchGuildMember(guildId, target.id) : Promise.resolve(null),
+    guildId
+      ? database
+          .from("member_levels")
+          .select("xp, level")
+          .eq("guild_id", guildId)
+          .eq("user_id", target.id)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
+  ]);
+  const levelRow = levelResult.data;
+  let rank = 0;
+  if (guildId && levelRow) {
+    const { count } = await database
+      .from("member_levels")
+      .select("user_id", { count: "exact", head: true })
+      .eq("guild_id", guildId)
+      .gt("xp", Number(levelRow.xp ?? 0));
+    rank = (count ?? 0) + 1;
+  }
+  return {
+    username: target.username,
+    displayName: target.global_name ?? target.username,
+    userId: target.id,
+    avatarUrl: accountAvatarUrl(target),
+    serverName: guild?.name ?? null,
+    level: Number(levelRow?.level ?? 0),
+    xp: Number(levelRow?.xp ?? 0),
+    rank,
+    discordCreatedAt: discordAccountCreatedAt(target.id),
+    serverJoinedAt: guildMember?.joined_at ?? null,
+  };
+}
+
+export interface DiscordCardInteractionResult {
+  buffer: Buffer;
+  filename: string;
+  title: string;
+}
+
+/** Gateway-only card path. The HTTP interaction endpoint remains JSON/Embed compatible. */
+export async function handleDiscordCardCommand(
+  payload: DiscordInteractionPayload,
+): Promise<DiscordCardInteractionResult | null> {
+  const command = payload.data?.name;
+  if (command !== "user" && command !== "profile") return null;
+  const caller = interactionUser(payload);
+  if (!caller) throw new Error("Missing interaction user");
+  const targetId = command === "user" ? interactionOption<string>(payload, "member") ?? caller.id : caller.id;
+  const target = targetId === caller.id ? caller : await fetchDiscordUser(targetId);
+  if (!target) throw new Error("Target Discord user was not found");
+  const stats = await memberCardStats(payload, target);
+  return command === "profile"
+    ? { buffer: await renderProfileCard(stats), filename: "glow-profile-card.png", title: "Glow Profile" }
+    : { buffer: await renderUserCard(stats), filename: "glow-user-card.png", title: "Glow User Card" };
 }
 
 async function avatarInfo(payload: DiscordInteractionPayload, user: InteractionUser) {

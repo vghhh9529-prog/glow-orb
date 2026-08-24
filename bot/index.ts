@@ -20,6 +20,7 @@ import {
 
 import { supabaseAdmin } from "../src/integrations/supabase/client.server";
 import {
+  handleDiscordCardCommand,
   handleDiscordInteraction,
   type DiscordInteractionOption,
   type DiscordInteractionPayload,
@@ -642,7 +643,24 @@ client.on(Events.InteractionCreate, async (interaction) => {
       await interaction.reply({ content: "هذا الأمر معطل من لوحة Glow لهذا السيرفر.", ephemeral: true });
       return;
     }
-    const response = await handleDiscordInteraction(interactionPayload(interaction), SITE_URL);
+    const payload = interactionPayload(interaction);
+    if (interaction.commandName === "user" || interaction.commandName === "profile") {
+      const card = await handleDiscordCardCommand(payload);
+      if (!card) throw new Error("Card command did not return an image");
+      await interaction.reply({
+        embeds: [
+          new EmbedBuilder()
+            .setColor(0x7c5cff)
+            .setTitle(card.title)
+            .setDescription("English profile card · live Discord and Glow data")
+            .setImage(`attachment://${card.filename}`)
+            .setFooter({ text: "Glow · Community progression" }),
+        ],
+        files: [{ attachment: card.buffer, name: card.filename }],
+      });
+      return;
+    }
+    const response = await handleDiscordInteraction(payload, SITE_URL);
     const body = (await response.json()) as {
       data?: { content?: string; embeds?: Array<Record<string, unknown>>; flags?: number };
     };

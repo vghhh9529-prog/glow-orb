@@ -32,6 +32,7 @@ export function guildIconUrl(id: string, icon: string | null | undefined) {
 }
 
 export function userAvatarUrl(id: string, avatar: string | null | undefined) {
+  if (avatar?.startsWith("http")) return avatar;
   if (!avatar) {
     const index = (BigInt(id) >> 22n) % 6n;
     return `https://cdn.discordapp.com/embed/avatars/${index}.png`;

@@ -7,6 +7,11 @@ export const getMe = createServerFn({ method: "GET" }).handler(async () => {
   return getSessionUser();
 });
 
+export const getMyProfile = createServerFn({ method: "GET" }).handler(async () => {
+  const { getMyProfile: loadProfile } = await import("./profile.server");
+  return loadProfile();
+});
+
 export const signOut = createServerFn({ method: "POST" }).handler(async () => {
   const { currentSessionToken, SESSION_COOKIE } = await import("./session.server");
   const token = currentSessionToken();

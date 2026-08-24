@@ -176,6 +176,13 @@ export async function exchangeCode(code: string, redirectUri: string) {
   }
 }
 
+export async function fetchGuildMember(guildId: string, userId: string) {
+  return botFetch<{
+    user?: { id: string; username: string; global_name?: string | null; avatar?: string | null };
+    joined_at?: string;
+  }>(`/guilds/${guildId}/members/${userId}`);
+}
+
 export async function fetchCurrentUser(accessToken: string) {
   const res = await fetch(`${API}/users/@me`, {
     headers: { Authorization: `Bearer ${accessToken}` },
