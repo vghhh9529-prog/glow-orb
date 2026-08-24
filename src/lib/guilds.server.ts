@@ -101,7 +101,7 @@ export async function loadGuildWorkspace(guildId: string) {
   for (const key of Object.keys(MODULE_DEFAULTS) as ModuleKey[]) {
     const found = modules.data?.find((m) => m.module === key);
     moduleMap[key] = {
-      enabled: found?.enabled ?? false,
+      enabled: found?.enabled ?? key === "commands",
       config: withDefaults(key, found?.config),
     };
   }

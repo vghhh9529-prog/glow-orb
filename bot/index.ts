@@ -77,7 +77,7 @@ async function moduleConfig<T extends ModuleKey>(guildId: string, module: T) {
     );
   }
   return {
-    enabled: Boolean(data?.enabled),
+    enabled: data ? Boolean(data.enabled) : module === "commands",
     config: withDefaults(module, data?.config),
   };
 }
@@ -422,6 +422,7 @@ function interactionPayload(interaction: ChatInputCommandInteraction): DiscordIn
     type: 2,
     token: interaction.token,
     guild_id: interaction.guildId ?? undefined,
+    channel_id: interaction.channelId ?? undefined,
     member: {
       user: {
         id: interaction.user.id,
@@ -429,6 +430,7 @@ function interactionPayload(interaction: ChatInputCommandInteraction): DiscordIn
         global_name: interaction.user.globalName,
         avatar: interaction.user.displayAvatarURL({ extension: "png", size: 128 }),
       },
+      permissions: interaction.memberPermissions?.bitfield.toString(),
     },
     data: {
       name: interaction.commandName,
@@ -448,6 +450,14 @@ client.once(Events.ClientReady, async (readyClient) => {
 client.on(Events.InteractionCreate, async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
   try {
+    const settings = await moduleConfig(interaction.guildId ?? "", "commands");
+    const disabled = Array.isArray(settings.config.disabled)
+      ? settings.config.disabled.filter((item): item is string => typeof item === "string")
+      : [];
+    if (!settings.enabled || disabled.includes(interaction.commandName)) {
+      await interaction.reply({ content: "هذا الأمر معطل من لوحة Glow لهذا السيرفر.", ephemeral: true });
+      return;
+    }
     const response = await handleDiscordInteraction(interactionPayload(interaction), SITE_URL);
     const body = (await response.json()) as {
       data?: { content?: string; flags?: number };

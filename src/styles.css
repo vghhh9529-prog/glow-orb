@@ -150,6 +150,10 @@
     font-feature-settings: "ss01" 1, "cv02" 1;
   }
 
+  :lang(ar), [dir="rtl"] {
+    font-family: "IBM Plex Sans Arabic", "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  }
+
   ::-webkit-scrollbar {
     width: 10px;
     height: 10px;

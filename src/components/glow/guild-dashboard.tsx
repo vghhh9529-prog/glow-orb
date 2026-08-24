@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import {
@@ -50,6 +50,7 @@ import {
   updateSuggestion,
 } from "@/lib/api.functions";
 import { MODULE_KEYS, type ModuleKey, guildIconUrl } from "@/lib/discord";
+import { COMMAND_CATALOG, type CommandCategory } from "@/lib/command-catalog";
 import { MODULE_DEFAULTS, PLACEHOLDERS } from "@/lib/module-defaults";
 import { useI18n } from "@/lib/i18n";
 import { ConfigEditor, type Option } from "@/components/glow/config-editor";
@@ -150,6 +151,44 @@ interface ModuleMeta {
   group: "core" | "community" | "safety";
 }
 
+const COMMAND_ENGLISH: Record<string, string> = {
+  "color-set": "Set a color role by number",
+  colors: "View available colored roles",
+  "get-emojis": "List the server emojis",
+  help: "View the Glow help menu",
+  ping: "Check Glow latency",
+  "points-list": "View your points",
+  rep: "Give a member reputation",
+  roll: "Roll a six-sided die",
+  suggest: "Submit a server suggestion",
+  suggestion: "Review a suggestion",
+  title: "View or change your profile title",
+  translate: "Translate a message or phrase",
+  vito: "View a Vito balance",
+  avatar: "View a member avatar",
+  banner: "View a member banner",
+  invites: "View invite information",
+  profile: "View a customizable profile card",
+  roles: "List server roles and member counts",
+  "server-avatar": "View the server avatar",
+  "server-banner": "View the server banner",
+  server: "View server information",
+  user: "View member information",
+  reset: "Reset server XP",
+  setlevel: "Set a member level",
+  setxp: "Set member XP",
+  rank: "View a member rank card",
+  top: "View the most active members",
+  clear: "Delete recent messages",
+  kick: "Remove a member from the server",
+  ban: "Ban a member from the server",
+  unban: "Remove a user ban",
+  timeout: "Temporarily restrict a member",
+  untimeout: "Remove a member timeout",
+  "warn-add": "Record a member warning",
+  warnings: "View member warnings",
+};
+
 export const MODULE_META: Record<ModuleKey, ModuleMeta> = {
   welcome: {
     title: "الترحيب والمغادرة",
@@ -230,6 +269,14 @@ export const MODULE_META: Record<ModuleKey, ModuleMeta> = {
     enDescription: "Create short commands that Glow answers inside your server.",
     icon: Command,
     group: "community",
+  },
+  commands: {
+    title: "إدارة الأوامر",
+    en: "Command Center",
+    description: "فعّل أو عطّل أوامر Glow المسجلة لكل سيرفر.",
+    enDescription: "Enable or disable registered Glow commands per server.",
+    icon: Command,
+    group: "core",
   },
 };
 
@@ -321,7 +368,7 @@ export function GuildDashboardLayout({
   workspace: GuildWorkspace;
   children: ReactNode;
 }) {
-  const { t } = useI18n();
+  const { t, dir } = useI18n();
   const navigate = useNavigate();
   const activeModules = MODULE_KEYS.filter((key) => workspace.modules?.[key]?.enabled).length;
   const guildIcon = guildIconUrl(workspace.guild.id, workspace.guild.icon);
@@ -334,6 +381,10 @@ export function GuildDashboardLayout({
     {
       label: t("المجتمع", "Community"),
       items: ["suggestions", "autoreply", "autointeraction", "customcommands"] as ModuleKey[],
+    },
+    {
+      label: t("الأوامر", "Commands"),
+      items: ["commands"] as ModuleKey[],
     },
     {
       label: t("الأمان والإشراف", "Safety & moderation"),
@@ -356,8 +407,8 @@ export function GuildDashboardLayout({
           </Button>
         }
       />
-      <div className="mx-auto flex w-full max-w-[1440px] gap-4 px-3 py-4 sm:px-5 lg:gap-6 lg:px-6">
-        <aside className="hidden w-64 shrink-0 lg:block">
+      <div dir="ltr" className="mx-auto flex w-full max-w-[1440px] flex-row-reverse gap-4 px-3 py-4 sm:px-5 lg:gap-6 lg:px-6">
+        <aside dir={dir} className="hidden w-64 shrink-0 lg:block">
           <div className="sticky top-20 space-y-4">
             <Card className="glow-panel overflow-hidden p-3">
               <button
@@ -427,7 +478,7 @@ export function GuildDashboardLayout({
           </div>
         </aside>
 
-        <main className="min-w-0 flex-1 animate-rise-in">
+        <main dir={dir} className="min-w-0 flex-1 animate-rise-in">
           <div className="mb-4 flex gap-2 overflow-x-auto rounded-2xl border border-border/50 bg-sidebar/80 p-2 lg:hidden">
             <SectionLink guildId={guildId} section="overview" icon={LayoutDashboard}>
               {t("الرئيسية", "Home")}
@@ -740,11 +791,145 @@ export function GuildSectionPage({
 }) {
   if (!isSectionKey(section)) return <NotFoundSection />;
   const normalized = section as SectionKey;
+  if (normalized === "commands")
+    return <CommandsModulePage guildId={guildId} workspace={workspace} />;
   if (isModuleKey(normalized))
     return <ModulePage guildId={guildId} moduleKey={normalized} workspace={workspace} />;
   if (normalized === "moderation") return <ModerationPage guildId={guildId} />;
   if (normalized === "suggestion-review") return <SuggestionsPage guildId={guildId} />;
   return <LeaderboardPage guildId={guildId} />;
+}
+
+function CommandsModulePage({
+  guildId,
+  workspace,
+}: {
+  guildId: string;
+  workspace: GuildWorkspace;
+}) {
+  const { t, lang } = useI18n();
+  const qc = useQueryClient();
+  const current = workspace.modules?.["commands"];
+  const [enabled, setEnabled] = useState(Boolean(current?.enabled));
+  const [config, setConfig] = useState<Record<string, unknown>>(
+    current?.config ?? MODULE_DEFAULTS.commands,
+  );
+  const [query, setQuery] = useState("");
+  const [category, setCategory] = useState<CommandCategory | "all">("all");
+  const hydrated = useRef(false);
+
+  useEffect(() => {
+    hydrated.current = false;
+    setEnabled(Boolean(current?.enabled));
+    setConfig(current?.config ?? MODULE_DEFAULTS.commands);
+    const timer = window.setTimeout(() => {
+      hydrated.current = true;
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [current]);
+
+  const save = useMutation({
+    mutationFn: () => saveModule({ data: { guildId, module: "commands", enabled, config } }),
+    onSuccess: () => {
+      toast.success(t("تم حفظ إعدادات الأوامر", "Command settings saved"));
+      qc.invalidateQueries({ queryKey: ["workspace", guildId] });
+    },
+    onError: () => toast.error(t("تعذر حفظ إعدادات الأوامر", "Could not save command settings")),
+  });
+
+  useEffect(() => {
+    if (!hydrated.current) return;
+    const timer = window.setTimeout(() => save.mutate(), 550);
+    return () => window.clearTimeout(timer);
+  }, [enabled, config]);
+
+  const rawDisabled = config["disabled"];
+  const disabled = Array.isArray(rawDisabled)
+    ? rawDisabled.filter((item): item is string => typeof item === "string")
+    : [];
+  const filtered = useMemo(() => {
+    const normalized = query.trim().toLowerCase();
+    return COMMAND_CATALOG.filter((command) => {
+      const matchesCategory = category === "all" || command.category === category;
+      const matchesQuery = !normalized || `${command.name} ${command.description}`.toLowerCase().includes(normalized);
+      return matchesCategory && matchesQuery;
+    });
+  }, [category, query]);
+  const categoryLabels: Record<CommandCategory | "all", [string, string]> = {
+    all: ["الكل", "All"],
+    general: ["عام", "General"],
+    info: ["معلومات", "Info"],
+    leveling: ["الليفل", "Leveling"],
+    moderation: ["الإشراف", "Moderation"],
+  };
+  const categories = Object.keys(categoryLabels) as Array<CommandCategory | "all">;
+
+  function setCommandEnabled(name: string, nextEnabled: boolean) {
+    const nextDisabled = nextEnabled
+      ? disabled.filter((item) => item !== name)
+      : Array.from(new Set([...disabled, name]));
+    setConfig({ ...config, disabled: nextDisabled });
+  }
+
+  return (
+    <div className="space-y-6">
+      <SectionHero
+        icon={Command}
+        title={t("إدارة الأوامر", "Command Center")}
+        description={t(
+          "فعّل أو عطّل كل أمر من أوامر Glow لهذا السيرفر. كل حالة تُحفظ بشكل مستقل في قاعدة البيانات.",
+          "Enable or disable every Glow command for this server. Each state is stored independently in the database.",
+        )}
+        enabled={enabled}
+        onEnabledChange={setEnabled}
+      />
+      <Card className="glow-panel overflow-hidden p-5 sm:p-6">
+        <div className="flex flex-col gap-5 border-b border-border/50 pb-5 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.2em] text-primary">{t("كتالوج كامل", "Full catalog")}</p>
+            <h2 className="mt-2 text-xl font-bold text-foreground">{t("أوامر السيرفر", "Server commands")}</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {t(`${COMMAND_CATALOG.length} أمر · ${disabled.length} معطل`, `${COMMAND_CATALOG.length} commands · ${disabled.length} disabled`)}
+            </p>
+          </div>
+          <div className="relative w-full lg:max-w-xs">
+            <Search className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("ابحث في الأوامر…", "Search commands…")} className="h-11 rounded-xl ps-9" />
+          </div>
+        </div>
+        <div className="mt-5 flex flex-wrap gap-2">
+          {categories.map((item) => (
+            <button
+              key={item}
+              type="button"
+              onClick={() => setCategory(item)}
+              className={`rounded-xl border px-3.5 py-2 text-xs font-bold transition-[background-color,border-color,color,transform] duration-200 active:scale-[0.97] ${category === item ? "border-primary/45 bg-primary/15 text-primary" : "border-border/60 bg-background/30 text-muted-foreground hover:-translate-y-0.5 hover:border-primary/30 hover:text-foreground"}`}
+            >
+              {t(categoryLabels[item][0], categoryLabels[item][1])}
+              <span className="ms-1.5 opacity-60">{item === "all" ? COMMAND_CATALOG.length : COMMAND_CATALOG.filter((command) => command.category === item).length}</span>
+            </button>
+          ))}
+        </div>
+        <div className="mt-5 grid gap-3 md:grid-cols-2">
+          {filtered.map((command) => {
+            const live = command.supported;
+            const active = live && !disabled.includes(command.name);
+            return (
+              <div key={command.name} className={`flex min-h-[5.75rem] items-center gap-3 rounded-2xl border p-4 transition duration-200 ${active ? "border-border/60 bg-background/25 hover:border-primary/35" : "border-border/40 bg-background/10 opacity-75"}`}>
+                <span className={`flex size-10 shrink-0 items-center justify-center rounded-xl ${live ? "bg-primary/12 text-primary" : "bg-muted/60 text-muted-foreground"}`}><Command className="size-4" /></span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2"><code className="text-sm font-bold text-foreground">/{command.name}</code>{live ? <Badge variant="secondary" className="bg-success/10 text-[10px] text-success">{t("شغال", "Live")}</Badge> : <Badge variant="secondary" className="text-[10px]">{t("قريباً", "Planned")}</Badge>}</div>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">{lang === "ar" ? command.description : COMMAND_ENGLISH[command.name] ?? "Server command"}</p>
+                </div>
+                {live && <Switch checked={active} onCheckedChange={(value) => setCommandEnabled(command.name, value)} aria-label={`${command.name} enabled`} />}
+              </div>
+            );
+          })}
+        </div>
+        {filtered.length === 0 && <p className="py-12 text-center text-sm text-muted-foreground">{t("لا توجد أوامر مطابقة.", "No matching commands.")}</p>}
+      </Card>
+    </div>
+  );
 }
 
 function ModulePage({
@@ -764,10 +949,16 @@ function ModulePage({
   const [config, setConfig] = useState<Record<string, unknown>>(
     current?.config ?? MODULE_DEFAULTS[moduleKey],
   );
+  const hydrated = useRef(false);
 
   useEffect(() => {
+    hydrated.current = false;
     setEnabled(Boolean(current?.enabled));
     setConfig(current?.config ?? MODULE_DEFAULTS[moduleKey]);
+    const timer = window.setTimeout(() => {
+      hydrated.current = true;
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [moduleKey, current]);
 
   const save = useMutation<{ ok: boolean; sync?: { ok?: boolean } }>({
@@ -790,6 +981,14 @@ function ModulePage({
     },
     onError: () => toast.error(t("تعذر حفظ الإعدادات", "Could not save settings")),
   });
+
+  useEffect(() => {
+    if (!hydrated.current) return;
+    const timer = window.setTimeout(() => {
+      save.mutate();
+    }, 700);
+    return () => window.clearTimeout(timer);
+  }, [enabled, config, moduleKey]);
 
   const roles: Option[] = (workspace.roles ?? []).map((role) => ({ id: role.id, name: role.name }));
   const channels: Option[] = (workspace.channels ?? []).map((channel) => ({
@@ -983,6 +1182,29 @@ function ItemManager({
     onSuccess: () => qc.invalidateQueries({ queryKey: ["items", guildId, kind] }),
     onError: () => toast.error(t("تعذر حذف العنصر", "Could not delete item")),
   });
+  const toggleItem = useMutation({
+    mutationFn: ({ item, enabled }: { item: GuildItem; enabled: boolean }) =>
+      saveItem({
+        data: item.id
+          ? {
+              guildId,
+              kind,
+              id: item.id,
+              name: String(item.name ?? "Glow item"),
+              enabled,
+              data: item.data ?? {},
+            }
+          : {
+              guildId,
+              kind,
+              name: String(item.name ?? "Glow item"),
+              enabled,
+              data: item.data ?? {},
+            },
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["items", guildId, kind] }),
+    onError: () => toast.error(t("تعذر تحديث حالة العنصر", "Could not update item status")),
+  });
 
   const title =
     kind === "autoreply"
@@ -1051,6 +1273,11 @@ function ItemManager({
                   {String(data["response"] ?? data["emoji"] ?? data["trigger"] ?? "")}
                 </p>
               </div>
+              <Switch
+                checked={item.enabled !== false}
+                onCheckedChange={(checked) => toggleItem.mutate({ item, enabled: checked })}
+                aria-label={t("تفعيل العنصر", "Enable item")}
+              />
               <Button
                 variant="ghost"
                 size="icon"

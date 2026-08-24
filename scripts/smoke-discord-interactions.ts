@@ -1,5 +1,6 @@
 import { handleDiscordInteraction } from "../src/lib/discord-interactions.server";
 import { SLASH_COMMANDS } from "../src/lib/slash-commands";
+import { COMMAND_CATALOG } from "../src/lib/command-catalog";
 
 const required = [
   "daily",
@@ -11,15 +12,39 @@ const required = [
   "profile",
   "server",
   "roles",
+  "colors",
+  "points-list",
+  "roll",
+  "top",
+  "banner",
+  "server-avatar",
+  "server-banner",
+  "clear",
+  "kick",
+  "ban",
+  "unban",
+  "timeout",
+  "untimeout",
+  "warn-add",
+  "warnings",
   "ping",
   "user",
   "avatar",
   "help",
-];
+] as const;
 const names = SLASH_COMMANDS.map((command) => command.name);
+if (names.length !== required.length) {
+  throw new Error(`Expected ${required.length} slash commands, found ${names.length}`);
+}
+if (COMMAND_CATALOG.length !== 87) {
+  throw new Error(`Expected 87 catalog entries, found ${COMMAND_CATALOG.length}`);
+}
+const liveCatalog = COMMAND_CATALOG.filter((command) => command.supported).map((command) => command.name);
+if (liveCatalog.length !== names.length || names.some((name) => !liveCatalog.includes(name))) {
+  throw new Error("Command catalog and registered commands are out of sync");
+}
 for (const name of required) {
-  if (!names.includes(name as (typeof names)[number]))
-    throw new Error(`Missing slash command: ${name}`);
+  if (!names.includes(name)) throw new Error(`Missing slash command: ${name}`);
 }
 
 const response = await handleDiscordInteraction(
@@ -36,10 +61,14 @@ if (
   body.type !== 4 ||
   !body.data?.content?.includes("/server") ||
   !body.data.content.includes("/roles") ||
+  !body.data.content.includes("/colors") ||
+  !body.data.content.includes("/server-banner") ||
   !body.data.content.includes("/ping") ||
-  !body.data.content.includes("/avatar")
+  !body.data.content.includes("/avatar") ||
+  !body.data.content.includes("/server-banner") ||
+  !body.data.content.includes("/clear")
 ) {
   throw new Error("/help smoke response is invalid");
 }
 
-console.log(`[Glow Test] ${required.length} slash commands registered and /help response passed`);
+console.log(`[Glow Test] ${names.length} slash commands registered and /help response passed`);

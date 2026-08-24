@@ -194,17 +194,22 @@ function Field({
 
   if (typeof value === "boolean") {
     return (
-      <div className="flex items-center justify-between rounded-lg border border-border/60 bg-card/40 px-3 py-2">
-        <Label className="text-sm">{title}</Label>
-        <Switch checked={value} onCheckedChange={onChange} />
+      <div className="flex min-h-[4.25rem] items-center justify-between gap-4 rounded-2xl border border-border/60 bg-gradient-to-br from-card/70 to-background/35 px-4 py-3 shadow-sm transition-colors hover:border-primary/35">
+        <div className="min-w-0">
+          <Label className="block truncate text-sm font-semibold text-foreground">{title}</Label>
+          <span className={`mt-1 block text-[11px] font-medium ${value ? "text-success" : "text-muted-foreground"}`}>
+            {value ? t("مفعل ويُحفظ الآن", "Enabled and persisted") : t("معطل لكن إعداداته محفوظة", "Disabled but settings are saved")}
+          </span>
+        </div>
+        <Switch checked={value} onCheckedChange={onChange} aria-label={title} />
       </div>
     );
   }
 
   if (typeof value === "number") {
     return (
-      <div className="space-y-1.5">
-        <Label className="text-xs text-muted-foreground">{title}</Label>
+      <div className="flex min-h-[4.25rem] flex-col justify-between gap-1.5">
+        <Label className="text-xs font-semibold text-muted-foreground">{title}</Label>
         <Input type="number" value={value} onChange={(e) => onChange(Number(e.target.value))} />
       </div>
     );
@@ -313,8 +318,8 @@ function Field({
 
   const long = name === "message" || name === "description" || str.length > 60;
   return (
-    <div className="space-y-1.5">
-      <Label className="text-xs text-muted-foreground">{title}</Label>
+    <div className="flex min-h-[4.25rem] flex-col gap-1.5">
+      <Label className="text-xs font-semibold text-muted-foreground">{title}</Label>
       {long ? (
         <Textarea rows={3} value={str} onChange={(e) => onChange(e.target.value)} />
       ) : (
@@ -334,14 +339,14 @@ function ObjectFields({
   onChange: (next: Record<string, unknown>) => void;
 }) {
   return (
-    <div className="grid gap-3 md:grid-cols-2">
+    <div className="grid items-stretch gap-4 md:grid-cols-2">
       {Object.entries(data).map(([key, value]) => {
         const wide =
           (value && typeof value === "object" && !Array.isArray(value)) ||
           key === "message" ||
           key === "description";
         return (
-          <div key={key} className={wide ? "md:col-span-2" : ""}>
+          <div key={key} className={`${wide ? "md:col-span-2" : ""} h-full`}>
             <Field
               name={key}
               value={value}

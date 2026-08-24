@@ -1,4 +1,13 @@
-import { fetchBotGuild, fetchDiscordUser, fetchGuildRoles } from "./discord-api.server";
+import {
+  banMember,
+  clearChannelMessages,
+  fetchBotGuild,
+  fetchDiscordUser,
+  fetchGuildRoles,
+  kickMember,
+  timeoutMember,
+  unbanMember,
+} from "./discord-api.server";
 import { ensureGuildRow } from "./guilds.server";
 
 const DAILY_COOLDOWN_MS = 12 * 60 * 60_000;
@@ -24,7 +33,8 @@ export interface DiscordInteractionPayload {
   token?: string;
   guild_id?: string;
   user?: InteractionUser;
-  member?: { user?: InteractionUser };
+  member?: { user?: InteractionUser; permissions?: string };
+  channel_id?: string;
   data?: { name?: string; options?: DiscordInteractionOption[] };
 }
 
@@ -38,6 +48,49 @@ export function interactionOption<T extends string | number | boolean>(
 ): T | undefined {
   const option = payload.data?.options?.find((item) => item.name === name);
   return option?.value as T | undefined;
+}
+
+function hasPermission(payload: DiscordInteractionPayload, permission: bigint) {
+  const raw = payload.member?.permissions;
+  if (!raw) return false;
+  try {
+    const value = BigInt(raw);
+    return (value & 0x8n) === 0x8n || (value & permission) === permission;
+  } catch {
+    return false;
+  }
+}
+
+function permissionDenied() {
+  return interactionResponse("تحتاج صلاحية مناسبة لتنفيذ هذا الأمر.", { ephemeral: true });
+}
+
+async function recordModerationCase(
+  payload: DiscordInteractionPayload,
+  moderator: InteractionUser,
+  action: string,
+  targetId: string,
+  reason: string,
+  durationMinutes?: number,
+) {
+  const guildId = payload.guild_id;
+  if (!guildId) return;
+  const guild = await fetchBotGuild(guildId);
+  if (guild) await ensureGuildRow(guildId, guild.name, guild.icon);
+  const database = await db();
+  await database.from("moderation_cases").insert({
+    guild_id: guildId,
+    action,
+    target_id: targetId,
+    target_name: `<@${targetId}>`,
+    moderator_id: moderator.id,
+    moderator_name: moderator.global_name ?? moderator.username,
+    reason: reason.slice(0, 500),
+    duration_minutes: durationMinutes ?? null,
+    expires_at: durationMinutes
+      ? new Date(Date.now() + durationMinutes * 60_000).toISOString()
+      : null,
+  });
 }
 
 function decodeHex(value: string): Uint8Array | null {
@@ -259,13 +312,142 @@ async function rolesInfo(payload: DiscordInteractionPayload) {
   return interactionResponse(`**رولات السيرفر (${roles.length})**\n${visible}${suffix}`);
 }
 
+function discordAssetUrl(base: string, id: string, hash: string | null | undefined, size = 1024) {
+  if (!hash) return null;
+  const extension = hash.startsWith("a_") ? "gif" : "png";
+  return `https://cdn.discordapp.com/${base}/${id}/${hash}.${extension}?size=${size}`;
+}
+
+async function colorsInfo(payload: DiscordInteractionPayload) {
+  const guildId = payload.guild_id;
+  if (!guildId) return interactionResponse("هذا الأمر يعمل داخل السيرفر فقط.", { ephemeral: true });
+  const roles = (await fetchGuildRoles(guildId)).filter((role) => !role.managed && role.color > 0).sort((a, b) => b.position - a.position);
+  if (roles.length === 0) return interactionResponse("لا توجد رولات ملوّنة في السيرفر حالياً.", { ephemeral: true });
+  const rows = roles.slice(0, 20).map((role) => `• **${role.name}** · \`#${role.color.toString(16).padStart(6, "0").toUpperCase()}\``).join("\n");
+  return interactionResponse(`**ألوان الرولات (${roles.length})**\n${rows}${roles.length > 20 ? `\n… و ${roles.length - 20} لون إضافي.` : ""}`);
+}
+
+async function rollInfo() {
+  const result = Math.floor(Math.random() * 6) + 1;
+  return interactionResponse(`🎲 النتيجة: **${result}** من 6.`);
+}
+
+async function bannerInfo(payload: DiscordInteractionPayload, user: InteractionUser) {
+  const targetId = interactionOption<string>(payload, "member") ?? user.id;
+  const target = (await fetchDiscordUser(targetId)) ?? (targetId === user.id ? user : null);
+  if (!target) return interactionResponse("تعذر العثور على هذا العضو.", { ephemeral: true });
+  const banner = "banner" in target && typeof target.banner === "string" ? target.banner : null;
+  const url = discordAssetUrl("banners", target.id, banner, 1024);
+  return interactionResponse(url ? `بانر **${target.global_name ?? target.username}**:\n${url}` : "هذا العضو لا يملك بانراً متاحاً.", { ephemeral: true });
+}
+
+async function serverAvatarInfo(payload: DiscordInteractionPayload) {
+  const guildId = payload.guild_id;
+  if (!guildId) return interactionResponse("هذا الأمر يعمل داخل السيرفر فقط.", { ephemeral: true });
+  const guild = await fetchBotGuild(guildId);
+  if (!guild) return interactionResponse("تعذر قراءة السيرفر حالياً.", { ephemeral: true });
+  const url = discordAssetUrl("icons", guild.id, guild.icon, 1024);
+  return interactionResponse(url ? `صورة **${guild.name}**:\n${url}` : "السيرفر لا يملك صورة حالياً.", { ephemeral: true });
+}
+
+async function serverBannerInfo(payload: DiscordInteractionPayload) {
+  const guildId = payload.guild_id;
+  if (!guildId) return interactionResponse("هذا الأمر يعمل داخل السيرفر فقط.", { ephemeral: true });
+  const guild = await fetchBotGuild(guildId);
+  if (!guild) return interactionResponse("تعذر قراءة السيرفر حالياً.", { ephemeral: true });
+  const url = discordAssetUrl("banners", guild.id, guild.banner, 1024);
+  return interactionResponse(url ? `بانر **${guild.name}**:\n${url}` : "السيرفر لا يملك بانراً حالياً.", { ephemeral: true });
+}
+
+async function clearInfo(payload: DiscordInteractionPayload, user: InteractionUser) {
+  const channelId = payload.channel_id;
+  const amount = Math.min(100, Math.max(1, Number(interactionOption<number>(payload, "amount") ?? 1)));
+  if (!payload.guild_id || !channelId) return interactionResponse("هذا الأمر يعمل داخل قناة السيرفر فقط.", { ephemeral: true });
+  if (!hasPermission(payload, 0x2000n)) return permissionDenied();
+  const result = await clearChannelMessages(channelId, amount, `Glow clear by ${user.id}`);
+  return result.ok
+    ? interactionResponse(`تم تنظيف **${result.deleted}** رسالة.`, { ephemeral: true })
+    : interactionResponse("تعذر تنظيف الرسائل. تأكد من صلاحيات Glow.", { ephemeral: true });
+}
+
+async function kickInfo(payload: DiscordInteractionPayload, user: InteractionUser) {
+  const guildId = payload.guild_id;
+  const targetId = interactionOption<string>(payload, "member");
+  if (!guildId || !targetId) return interactionResponse("اختر عضواً داخل السيرفر.", { ephemeral: true });
+  if (!hasPermission(payload, 0x2n)) return permissionDenied();
+  const reason = interactionOption<string>(payload, "reason")?.trim() || "Glow moderation";
+  const ok = await kickMember(guildId, targetId, reason);
+  if (!ok) return interactionResponse("تعذر طرد العضو. تحقق من ترتيب الرولات والصلاحيات.", { ephemeral: true });
+  await recordModerationCase(payload, user, "kick", targetId, reason);
+  return interactionResponse(`تم طرد <@${targetId}>. السبب: ${reason}`);
+}
+
+async function banInfo(payload: DiscordInteractionPayload, user: InteractionUser) {
+  const guildId = payload.guild_id;
+  const targetId = interactionOption<string>(payload, "member");
+  if (!guildId || !targetId) return interactionResponse("اختر عضواً داخل السيرفر.", { ephemeral: true });
+  if (!hasPermission(payload, 0x4n)) return permissionDenied();
+  const reason = interactionOption<string>(payload, "reason")?.trim() || "Glow moderation";
+  const ok = await banMember(guildId, targetId, reason);
+  if (!ok) return interactionResponse("تعذر حظر العضو. تحقق من ترتيب الرولات والصلاحيات.", { ephemeral: true });
+  await recordModerationCase(payload, user, "ban", targetId, reason);
+  return interactionResponse(`تم حظر <@${targetId}>. السبب: ${reason}`);
+}
+
+async function unbanInfo(payload: DiscordInteractionPayload, user: InteractionUser) {
+  const guildId = payload.guild_id;
+  const targetId = interactionOption<string>(payload, "user_id")?.trim();
+  if (!guildId || !targetId) return interactionResponse("اكتب معرّف المستخدم المحظور.", { ephemeral: true });
+  if (!hasPermission(payload, 0x4n)) return permissionDenied();
+  const reason = interactionOption<string>(payload, "reason")?.trim() || "Glow moderation";
+  const ok = await unbanMember(guildId, targetId, reason);
+  if (!ok) return interactionResponse("تعذر رفع الحظر. تأكد من أن المستخدم محظور وصلاحيات Glow.", { ephemeral: true });
+  await recordModerationCase(payload, user, "unban", targetId, reason);
+  return interactionResponse(`تم رفع الحظر عن المستخدم \`${targetId}\`.`);
+}
+
+async function timeoutInfo(payload: DiscordInteractionPayload, user: InteractionUser, clear = false) {
+  const guildId = payload.guild_id;
+  const targetId = interactionOption<string>(payload, "member");
+  if (!guildId || !targetId) return interactionResponse("اختر عضواً داخل السيرفر.", { ephemeral: true });
+  if (!hasPermission(payload, 0x100000000000n)) return permissionDenied();
+  const minutes = clear ? undefined : Math.min(40320, Math.max(1, Number(interactionOption<number>(payload, "minutes") ?? 1)));
+  const reason = interactionOption<string>(payload, "reason")?.trim() || "Glow moderation";
+  const until = minutes ? new Date(Date.now() + minutes * 60_000).toISOString() : null;
+  const ok = await timeoutMember(guildId, targetId, until, reason);
+  if (!ok) return interactionResponse("تعذر تحديث الـtimeout. تحقق من صلاحيات Glow وترتيب الرولات.", { ephemeral: true });
+  await recordModerationCase(payload, user, clear ? "untimeout" : "timeout", targetId, reason, minutes);
+  return interactionResponse(clear ? `تم إلغاء الـtimeout عن <@${targetId}>.` : `تم إعطاء <@${targetId}> timeout لمدة **${minutes} دقيقة**.`);
+}
+
+async function warningInfo(payload: DiscordInteractionPayload, user: InteractionUser, list = false) {
+  const guildId = payload.guild_id;
+  if (!guildId) return interactionResponse("هذا الأمر يعمل داخل السيرفر فقط.", { ephemeral: true });
+  const targetId = interactionOption<string>(payload, "member");
+  const database = await db();
+  if (list) {
+    let query = database.from("moderation_cases").select("target_id, target_name, reason, created_at, active").eq("guild_id", guildId).eq("action", "warn").order("created_at", { ascending: false }).limit(15);
+    if (targetId) query = query.eq("target_id", targetId);
+    const { data } = await query;
+    if (!data?.length) return interactionResponse("لا توجد تحذيرات مسجلة.", { ephemeral: true });
+    const rows = data.map((item, index) => `${index + 1}. ${item.target_name ?? `<@${item.target_id}>`} — ${item.reason ?? "بدون سبب"}`).join("\n");
+    return interactionResponse(`**التحذيرات (${data.length})**\n${rows}`, { ephemeral: true });
+  }
+  if (!targetId) return interactionResponse("اختر عضواً وأدخل سبب التحذير.", { ephemeral: true });
+  if (!hasPermission(payload, 0x200000000n)) return permissionDenied();
+  const reason = interactionOption<string>(payload, "reason")?.trim();
+  if (!reason) return interactionResponse("اكتب سبب التحذير.", { ephemeral: true });
+  await recordModerationCase(payload, user, "warn", targetId, reason);
+  return interactionResponse(`تم تسجيل تحذير على <@${targetId}>. السبب: ${reason}`);
+}
+
 async function pingInfo() {
   return interactionResponse("**Glow is online.** الاتصال بالـGateway والداشبورد يعملان.");
 }
 
 async function helpInfo() {
   return interactionResponse(
-    "**أوامر Glow**\n`/server` معلومات السيرفر · `/roles` رولات السيرفر · `/user` معلومات عضو · `/avatar` صورة عضو\n`/rank` اللفل وXP · `/leaderboard` الصدارة · `/suggest` اقتراح\n`/daily` مكافأة Glow · `/balance` الرصيد · `/profile` الملف · `/ping` حالة Glow · `/glow` رابط الداشبورد",
+    "**أوامر Glow**\n`/server` معلومات السيرفر · `/roles` رولات السيرفر · `/colors` ألوان الرولات · `/server-avatar` صورة السيرفر · `/server-banner` بانر السيرفر · `/user` معلومات عضو · `/avatar` صورة عضو · `/banner` بانر عضو\n`/rank` اللفل وXP · `/top` الصدارة · `/leaderboard` الصدارة · `/suggest` اقتراح\n`/clear` تنظيف · `/kick` طرد · `/ban` حظر · `/unban` رفع حظر · `/timeout` تايم أوت · `/untimeout` إلغاء تايم أوت · `/warn-add` تحذير · `/warnings` التحذيرات\n`/daily` مكافأة Glow · `/balance` الرصيد · `/points-list` النقاط · `/roll` نرد · `/profile` الملف · `/ping` حالة Glow · `/glow` رابط الداشبورد",
   );
 }
 
@@ -315,6 +497,21 @@ export async function handleDiscordInteraction(payload: DiscordInteractionPayloa
     );
   if (command === "server") return serverInfo(payload);
   if (command === "roles") return rolesInfo(payload);
+  if (command === "colors") return colorsInfo(payload);
+  if (command === "points-list") return balance(user);
+  if (command === "roll") return rollInfo();
+  if (command === "top") return leaderboard(payload);
+  if (command === "banner") return bannerInfo(payload, user);
+  if (command === "server-avatar") return serverAvatarInfo(payload);
+  if (command === "server-banner") return serverBannerInfo(payload);
+  if (command === "clear") return clearInfo(payload, user);
+  if (command === "kick") return kickInfo(payload, user);
+  if (command === "ban") return banInfo(payload, user);
+  if (command === "unban") return unbanInfo(payload, user);
+  if (command === "timeout") return timeoutInfo(payload, user);
+  if (command === "untimeout") return timeoutInfo(payload, user, true);
+  if (command === "warn-add") return warningInfo(payload, user);
+  if (command === "warnings") return warningInfo(payload, user, true);
   if (command === "ping") return pingInfo();
   if (command === "user") return userInfo(payload, user);
   if (command === "avatar") return avatarInfo(payload, user);

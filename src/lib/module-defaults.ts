@@ -135,6 +135,9 @@ export const MODULE_DEFAULTS: Record<ModuleKey, Record<string, unknown>> = {
     deleteTrigger: false,
     cooldownSeconds: 3,
   },
+  commands: {
+    disabled: [] as string[],
+  },
 };
 
 export function withDefaults(module: ModuleKey, config: unknown): Record<string, unknown> {

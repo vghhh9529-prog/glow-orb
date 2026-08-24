@@ -73,6 +73,109 @@ export const SLASH_COMMANDS = [
     type: 1,
   },
   {
+    name: "colors",
+    description: "اعرض ألوان الرولات المتاحة",
+    type: 1,
+  },
+  {
+    name: "points-list",
+    description: "اعرض نقاطك في Glow",
+    type: 1,
+  },
+  {
+    name: "roll",
+    description: "ارم نرداً من ستة أوجه",
+    type: 1,
+  },
+  {
+    name: "top",
+    description: "اعرض أعلى أعضاء السيرفر",
+    type: 1,
+  },
+  {
+    name: "banner",
+    description: "اعرض بانر عضو",
+    type: 1,
+    options: [{ name: "member", description: "العضو المطلوب", type: 6, required: false }],
+  },
+  {
+    name: "server-avatar",
+    description: "اعرض صورة السيرفر",
+    type: 1,
+  },
+  {
+    name: "server-banner",
+    description: "اعرض بانر السيرفر",
+    type: 1,
+  },
+  {
+    name: "clear",
+    description: "نظف رسائل القناة الحالية",
+    type: 1,
+    options: [{ name: "amount", description: "عدد الرسائل (1-100)", type: 4, required: true, min_value: 1, max_value: 100 }],
+  },
+  {
+    name: "kick",
+    description: "اطرد عضواً من السيرفر",
+    type: 1,
+    options: [
+      { name: "member", description: "العضو المطلوب", type: 6, required: true },
+      { name: "reason", description: "سبب الطرد", type: 3, required: false },
+    ],
+  },
+  {
+    name: "ban",
+    description: "احظر عضواً من السيرفر",
+    type: 1,
+    options: [
+      { name: "member", description: "العضو المطلوب", type: 6, required: true },
+      { name: "reason", description: "سبب الحظر", type: 3, required: false },
+    ],
+  },
+  {
+    name: "unban",
+    description: "ارفع الحظر عن مستخدم",
+    type: 1,
+    options: [
+      { name: "user_id", description: "معرّف المستخدم المحظور", type: 3, required: true },
+      { name: "reason", description: "سبب رفع الحظر", type: 3, required: false },
+    ],
+  },
+  {
+    name: "timeout",
+    description: "أعط عضواً تايم أوت",
+    type: 1,
+    options: [
+      { name: "member", description: "العضو المطلوب", type: 6, required: true },
+      { name: "minutes", description: "المدة بالدقائق (1-40320)", type: 4, required: true, min_value: 1, max_value: 40320 },
+      { name: "reason", description: "السبب", type: 3, required: false },
+    ],
+  },
+  {
+    name: "untimeout",
+    description: "ألغِ التايم أوت عن عضو",
+    type: 1,
+    options: [
+      { name: "member", description: "العضو المطلوب", type: 6, required: true },
+      { name: "reason", description: "السبب", type: 3, required: false },
+    ],
+  },
+  {
+    name: "warn-add",
+    description: "سجّل تحذيراً على عضو",
+    type: 1,
+    options: [
+      { name: "member", description: "العضو المطلوب", type: 6, required: true },
+      { name: "reason", description: "سبب التحذير", type: 3, required: true },
+    ],
+  },
+  {
+    name: "warnings",
+    description: "اعرض تحذيرات عضو",
+    type: 1,
+    options: [{ name: "member", description: "العضو المطلوب", type: 6, required: false }],
+  },
+  {
     name: "ping",
     description: "تحقق من اتصال Glow وسرعة الاستجابة",
     type: 1,

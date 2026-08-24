@@ -59,6 +59,7 @@ export interface DiscordUserProfile {
   username: string;
   global_name?: string | null;
   avatar?: string | null;
+  banner?: string | null;
 }
 
 export async function fetchDiscordUser(userId: string) {
@@ -81,6 +82,7 @@ export interface DiscordBotGuild {
   approximate_presence_count?: number;
   premium_subscription_count?: number;
   owner_id: string;
+  banner?: string | null;
 }
 
 export async function inspectBotGuild(guildId: string) {
@@ -236,6 +238,50 @@ export async function unbanMember(guildId: string, userId: string, reason: strin
     },
   });
   return res.ok;
+}
+
+export async function kickMember(guildId: string, userId: string, reason: string) {
+  const res = await fetch(`${API}/guilds/${guildId}/members/${userId}`, {
+    method: "DELETE",
+    headers: {
+      Authorization: `Bot ${botToken()}`,
+      "X-Audit-Log-Reason": reason.slice(0, 400),
+    },
+  });
+  return res.ok;
+}
+
+export async function banMember(guildId: string, userId: string, reason: string) {
+  const res = await fetch(`${API}/guilds/${guildId}/bans/${userId}`, {
+    method: "PUT",
+    headers: {
+      Authorization: `Bot ${botToken()}`,
+      "Content-Type": "application/json",
+      "X-Audit-Log-Reason": reason.slice(0, 400),
+    },
+    body: JSON.stringify({ delete_message_seconds: 0 }),
+  });
+  return res.ok;
+}
+
+export async function clearChannelMessages(channelId: string, amount: number, reason: string) {
+  const messages = await botFetch<Array<{ id: string; timestamp?: string }>>(
+    `/channels/${channelId}/messages?limit=${Math.min(100, Math.max(1, amount))}`,
+  );
+  if (!messages) return { ok: false, deleted: 0 };
+  const ids = messages.slice(0, amount).map((message) => message.id);
+  let deleted = 0;
+  for (const id of ids) {
+    const res = await fetch(`${API}/channels/${channelId}/messages/${id}`, {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bot ${botToken()}`,
+        "X-Audit-Log-Reason": reason.slice(0, 400),
+      },
+    });
+    if (res.ok) deleted += 1;
+  }
+  return { ok: true, deleted };
 }
 
 export async function putAutoModRule(guildId: string, rule: Record<string, unknown>) {
