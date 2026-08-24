@@ -8,7 +8,7 @@ import { TopBar } from "@/components/glow/shell";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, ShieldAlert } from "lucide-react";
+import { Plus, RefreshCw, ShieldAlert } from "lucide-react";
 
 export const Route = createFileRoute("/dashboard/$guildId")({
   ssr: false,
@@ -26,6 +26,10 @@ function GuildDashboardRoute() {
   const workspace = useQuery<GuildWorkspace>({
     queryKey: ["workspace", guildId],
     queryFn: async () => (await getWorkspace({ data: { guildId } })) as unknown as GuildWorkspace,
+    staleTime: 0,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true,
+    retry: 1,
   });
   const { t } = useI18n();
 
@@ -86,12 +90,23 @@ function GuildDashboardRoute() {
               "You can manage this server, but the bot is not in it yet. Invite it, then return to enable your modules.",
             )}
           </p>
-          <Button asChild className="mt-7 gap-2">
-            <a href={botInviteUrl(guildId)} target="_blank" rel="noreferrer">
-              <Plus className="size-4" />
-              {t("إضافة البوت للسيرفر", "Invite bot to server")}
-            </a>
-          </Button>
+          <div className="mt-7 flex flex-wrap justify-center gap-3">
+            <Button asChild className="gap-2">
+              <a href={botInviteUrl(guildId)} target="_blank" rel="noreferrer">
+                <Plus className="size-4" />
+                {t("إضافة البوت للسيرفر", "Invite bot to server")}
+              </a>
+            </Button>
+            <Button
+              variant="outline"
+              className="gap-2"
+              onClick={() => workspace.refetch()}
+              disabled={workspace.isFetching}
+            >
+              <RefreshCw className={`size-4 ${workspace.isFetching ? "animate-spin" : ""}`} />
+              {t("تحقق من وجود البوت", "Check bot again")}
+            </Button>
+          </div>
         </div>
       </div>
     );
