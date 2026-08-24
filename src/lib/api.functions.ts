@@ -14,7 +14,10 @@ export const signOut = createServerFn({ method: "POST" }).handler(async () => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     await supabaseAdmin.from("app_sessions").delete().eq("token", token);
   }
-  setResponseHeader("Set-Cookie", `${SESSION_COOKIE}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`);
+  setResponseHeader(
+    "Set-Cookie",
+    `${SESSION_COOKIE}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`,
+  );
   return { ok: true };
 });
 
@@ -27,7 +30,7 @@ export const getWorkspace = createServerFn({ method: "GET" })
   .inputValidator((data: { guildId: string }) => data)
   .handler(async ({ data }) => {
     const { loadGuildWorkspace } = await import("./guilds.server");
-    return loadGuildWorkspace(data.guildId);
+    return (await loadGuildWorkspace(data.guildId)) as unknown as string;
   });
 
 export const getOverview = createServerFn({ method: "GET" })
@@ -38,7 +41,14 @@ export const getOverview = createServerFn({ method: "GET" })
   });
 
 export const saveModule = createServerFn({ method: "POST" })
-  .inputValidator((data: { guildId: string; module: ModuleKey; enabled: boolean; config: Record<string, unknown> }) => data)
+  .inputValidator(
+    (data: {
+      guildId: string;
+      module: ModuleKey;
+      enabled: boolean;
+      config: Record<string, unknown>;
+    }) => data,
+  )
   .handler(async ({ data }) => {
     const { saveModuleConfig } = await import("./guilds.server");
     const result = await saveModuleConfig(data.guildId, data.module, data.enabled, data.config);
@@ -59,7 +69,14 @@ export const getItems = createServerFn({ method: "GET" })
 
 export const saveItem = createServerFn({ method: "POST" })
   .inputValidator(
-    (data: { guildId: string; kind: string; id?: string; name: string; enabled: boolean; data: Record<string, unknown> }) => data,
+    (data: {
+      guildId: string;
+      kind: string;
+      id?: string;
+      name: string;
+      enabled: boolean;
+      data: Record<string, unknown>;
+    }) => data,
   )
   .handler(async ({ data }) => {
     const { upsertGuildItem } = await import("./guilds.server");
@@ -82,7 +99,14 @@ export const getCases = createServerFn({ method: "GET" })
 
 export const addCase = createServerFn({ method: "POST" })
   .inputValidator(
-    (data: { guildId: string; action: string; targetId: string; targetName?: string; reason: string; durationMinutes?: number }) => data,
+    (data: {
+      guildId: string;
+      action: string;
+      targetId: string;
+      targetName?: string;
+      reason: string;
+      durationMinutes?: number;
+    }) => data,
   )
   .handler(async ({ data }) => {
     const { createCase } = await import("./moderation.server");
@@ -144,6 +168,6 @@ export const syncSlashCommands = createServerFn({ method: "POST" }).handler(asyn
   await requireSessionUser();
   const { registerSlashCommands } = await import("./discord-api.server");
   const { SLASH_COMMANDS } = await import("./slash-commands");
-  const registered = await registerSlashCommands(SLASH_COMMANDS as unknown[]);
+  const registered = await registerSlashCommands(SLASH_COMMANDS as unknown as unknown[]);
   return { ok: true, count: registered.length };
 });

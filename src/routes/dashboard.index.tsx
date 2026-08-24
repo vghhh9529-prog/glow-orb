@@ -31,7 +31,11 @@ function Servers() {
   });
 
   if (me.isLoading) {
-    return <div className="min-h-screen bg-background p-10"><Skeleton className="h-40 w-full" /></div>;
+    return (
+      <div className="min-h-screen bg-background p-10">
+        <Skeleton className="h-40 w-full" />
+      </div>
+    );
   }
 
   if (!me.data) {

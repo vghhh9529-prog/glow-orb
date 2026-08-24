@@ -1,3 +1,4 @@
+import type { Json } from "@/integrations/supabase/types";
 import {
   canManageGuild,
   fetchBotGuild,
@@ -45,7 +46,9 @@ export async function listManageableGuilds(): Promise<ManageableGuild[]> {
       } satisfies ManageableGuild;
     }),
   );
-  return results.sort((a, b) => Number(b.botPresent) - Number(a.botPresent) || a.name.localeCompare(b.name));
+  return results.sort(
+    (a, b) => Number(b.botPresent) - Number(a.botPresent) || a.name.localeCompare(b.name),
+  );
 }
 
 export async function assertGuildAccess(guildId: string) {
@@ -67,7 +70,10 @@ export async function ensureGuildRow(guildId: string, name: string, icon: string
   const db = await admin();
   await db
     .from("guilds")
-    .upsert({ id: guildId, name, icon, updated_at: new Date().toISOString() }, { onConflict: "id" });
+    .upsert(
+      { id: guildId, name, icon, updated_at: new Date().toISOString() },
+      { onConflict: "id" },
+    );
 }
 
 export async function loadGuildWorkspace(guildId: string) {
@@ -137,7 +143,7 @@ export async function saveModuleConfig(
       guild_id: guildId,
       module: moduleKey,
       enabled,
-      config: withDefaults(moduleKey, config),
+      config: withDefaults(moduleKey, config) as Json,
       updated_at: new Date().toISOString(),
     },
     { onConflict: "guild_id,module" },
@@ -175,11 +181,15 @@ export async function upsertGuildItem(input: {
     kind: input.kind,
     name: input.name,
     enabled: input.enabled,
-    data: input.data,
+    data: input.data as Json,
     updated_at: new Date().toISOString(),
   };
   if (input.id) {
-    const { error } = await db.from("guild_items").update(payload).eq("id", input.id).eq("guild_id", input.guildId);
+    const { error } = await db
+      .from("guild_items")
+      .update(payload)
+      .eq("id", input.id)
+      .eq("guild_id", input.guildId);
     if (error) throw error;
   } else {
     const { error } = await db.from("guild_items").insert(payload);
@@ -199,9 +209,24 @@ export async function guildOverview(guildId: string) {
   await assertGuildAccess(guildId);
   const db = await admin();
   const [levels, cases, suggestions, items] = await Promise.all([
-    db.from("member_levels").select("user_id, username, avatar, xp, level").eq("guild_id", guildId).order("xp", { ascending: false }).limit(10),
-    db.from("moderation_cases").select("*").eq("guild_id", guildId).order("created_at", { ascending: false }).limit(10),
-    db.from("suggestions").select("id, content, status, upvotes, downvotes, author_name, created_at").eq("guild_id", guildId).order("created_at", { ascending: false }).limit(5),
+    db
+      .from("member_levels")
+      .select("user_id, username, avatar, xp, level")
+      .eq("guild_id", guildId)
+      .order("xp", { ascending: false })
+      .limit(10),
+    db
+      .from("moderation_cases")
+      .select("*")
+      .eq("guild_id", guildId)
+      .order("created_at", { ascending: false })
+      .limit(10),
+    db
+      .from("suggestions")
+      .select("id, content, status, upvotes, downvotes, author_name, created_at")
+      .eq("guild_id", guildId)
+      .order("created_at", { ascending: false })
+      .limit(5),
     db.from("guild_items").select("kind").eq("guild_id", guildId),
   ]);
   const counts: Record<string, number> = {};

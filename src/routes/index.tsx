@@ -44,14 +44,62 @@ function Landing() {
   const { t } = useI18n();
 
   const features = [
-    { icon: Shield, ar: "الحماية", en: "Protection", dar: "أوقف حذف الرومات والرولات والبان الجماعي بعقوبات فورية.", den: "Stop channel/role nukes and mass bans with instant punishments." },
-    { icon: Bot, ar: "أوتومود", en: "AutoMod", dar: "فلاتر سبام وروابط ودعوات وكلمات ممنوعة تُركّب في ديسكورد مباشرة.", den: "Spam, links, invites and word filters pushed straight to Discord." },
-    { icon: Trophy, ar: "اللفلات", en: "Leveling", dar: "XP للكتابة والصوت والتفاعلات مع رولات مكافآت ولوحة صدارة.", den: "Text, voice and reaction XP with reward roles and leaderboards." },
-    { icon: UserPlus, ar: "الترحيب", en: "Welcome", dar: "رسائل وإمبد وكرت ترحيب بصورة العضو ومتغيرات مثل {user}.", den: "Messages, embeds and image cards with variables like {user}." },
-    { icon: Lightbulb, ar: "الاقتراحات", en: "Suggestions", dar: "تصويت ومراجعة وقرارات مع سجل كامل.", den: "Voting, review queue and decisions with full logs." },
-    { icon: MessageSquareHeart, ar: "الرد والتفاعل التلقائي", en: "Auto Reply & React", dar: "ردود وتفاعلات تلقائية على كلمات محددة.", den: "Automatic replies and reactions on trigger words." },
-    { icon: Mic, ar: "الرومات المؤقتة", en: "Temp Voice", dar: "روم إنشاء يولّد رومات خاصة تُحذف تلقائياً.", den: "A lobby that spawns private rooms and cleans them up." },
-    { icon: Coins, ar: "عملة Glow", en: "Glow Currency", dar: "مكافأة يومية كل 12 ساعة مع ستريك ومتجر قادم.", den: "Daily reward every 12 hours with streaks." },
+    {
+      icon: Shield,
+      ar: "الحماية",
+      en: "Protection",
+      dar: "أوقف حذف الرومات والرولات والبان الجماعي بعقوبات فورية.",
+      den: "Stop channel/role nukes and mass bans with instant punishments.",
+    },
+    {
+      icon: Bot,
+      ar: "أوتومود",
+      en: "AutoMod",
+      dar: "فلاتر سبام وروابط ودعوات وكلمات ممنوعة تُركّب في ديسكورد مباشرة.",
+      den: "Spam, links, invites and word filters pushed straight to Discord.",
+    },
+    {
+      icon: Trophy,
+      ar: "اللفلات",
+      en: "Leveling",
+      dar: "XP للكتابة والصوت والتفاعلات مع رولات مكافآت ولوحة صدارة.",
+      den: "Text, voice and reaction XP with reward roles and leaderboards.",
+    },
+    {
+      icon: UserPlus,
+      ar: "الترحيب",
+      en: "Welcome",
+      dar: "رسائل وإمبد وكرت ترحيب بصورة العضو ومتغيرات مثل {user}.",
+      den: "Messages, embeds and image cards with variables like {user}.",
+    },
+    {
+      icon: Lightbulb,
+      ar: "الاقتراحات",
+      en: "Suggestions",
+      dar: "تصويت ومراجعة وقرارات مع سجل كامل.",
+      den: "Voting, review queue and decisions with full logs.",
+    },
+    {
+      icon: MessageSquareHeart,
+      ar: "الرد والتفاعل التلقائي",
+      en: "Auto Reply & React",
+      dar: "ردود وتفاعلات تلقائية على كلمات محددة.",
+      den: "Automatic replies and reactions on trigger words.",
+    },
+    {
+      icon: Mic,
+      ar: "الرومات المؤقتة",
+      en: "Temp Voice",
+      dar: "روم إنشاء يولّد رومات خاصة تُحذف تلقائياً.",
+      den: "A lobby that spawns private rooms and cleans them up.",
+    },
+    {
+      icon: Coins,
+      ar: "عملة Glow",
+      en: "Glow Currency",
+      dar: "مكافأة يومية كل 12 ساعة مع ستريك ومتجر قادم.",
+      den: "Daily reward every 12 hours with streaks.",
+    },
   ];
 
   return (
@@ -73,7 +121,11 @@ function Landing() {
         />
         <div className="absolute inset-0 bg-gradient-to-b from-background/60 via-background/85 to-background" />
         <div className="relative mx-auto flex max-w-5xl flex-col items-center px-4 py-24 text-center">
-          <img src={logo} alt="Glow logo" className="size-24 rounded-3xl shadow-[0_0_60px_hsl(var(--primary)/0.6)]" />
+          <img
+            src={logo}
+            alt="Glow logo"
+            className="size-24 rounded-3xl shadow-[0_0_60px_hsl(var(--primary)/0.6)]"
+          />
           <p className="mt-6 text-sm font-semibold uppercase tracking-[0.35em] text-primary">
             Better Use Glow
           </p>

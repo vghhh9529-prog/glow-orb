@@ -12,7 +12,10 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as DashboardIndexRouteImport } from './routes/dashboard.index'
+import { Route as DashboardGuildIdRouteImport } from './routes/dashboard.$guildId'
 import { Route as DashboardAccountRouteImport } from './routes/dashboard.account'
+import { Route as DashboardGuildIdIndexRouteImport } from './routes/dashboard.$guildId.index'
+import { Route as DashboardGuildIdSectionRouteImport } from './routes/dashboard.$guildId.$section'
 import { Route as ApiPublicAuthDiscordCallbackRouteImport } from './routes/api/public/auth/discord/callback'
 import { Route as ApiPublicAuthDiscordLoginRouteImport } from './routes/api/public/auth/discord/login'
 
@@ -31,10 +34,25 @@ const DashboardIndexRoute = DashboardIndexRouteImport.update({
   path: '/',
   getParentRoute: () => DashboardRoute,
 } as any)
+const DashboardGuildIdRoute = DashboardGuildIdRouteImport.update({
+  id: '/$guildId',
+  path: '/$guildId',
+  getParentRoute: () => DashboardRoute,
+} as any)
 const DashboardAccountRoute = DashboardAccountRouteImport.update({
   id: '/account',
   path: '/account',
   getParentRoute: () => DashboardRoute,
+} as any)
+const DashboardGuildIdIndexRoute = DashboardGuildIdIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => DashboardGuildIdRoute,
+} as any)
+const DashboardGuildIdSectionRoute = DashboardGuildIdSectionRouteImport.update({
+  id: '/$section',
+  path: '/$section',
+  getParentRoute: () => DashboardGuildIdRoute,
 } as any)
 const ApiPublicAuthDiscordCallbackRoute =
   ApiPublicAuthDiscordCallbackRouteImport.update({
@@ -52,8 +70,11 @@ const ApiPublicAuthDiscordLoginRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/dashboard': typeof DashboardRouteWithChildren
+  '/dashboard/$guildId': typeof DashboardGuildIdRouteWithChildren
   '/dashboard/account': typeof DashboardAccountRoute
   '/dashboard/': typeof DashboardIndexRoute
+  '/dashboard/$guildId/$section': typeof DashboardGuildIdSectionRoute
+  '/dashboard/$guildId/': typeof DashboardGuildIdIndexRoute
   '/api/public/auth/discord/callback': typeof ApiPublicAuthDiscordCallbackRoute
   '/api/public/auth/discord/login': typeof ApiPublicAuthDiscordLoginRoute
 }
@@ -61,6 +82,8 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/dashboard/account': typeof DashboardAccountRoute
   '/dashboard': typeof DashboardIndexRoute
+  '/dashboard/$guildId/$section': typeof DashboardGuildIdSectionRoute
+  '/dashboard/$guildId': typeof DashboardGuildIdIndexRoute
   '/api/public/auth/discord/callback': typeof ApiPublicAuthDiscordCallbackRoute
   '/api/public/auth/discord/login': typeof ApiPublicAuthDiscordLoginRoute
 }
@@ -68,8 +91,11 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/dashboard': typeof DashboardRouteWithChildren
+  '/dashboard/$guildId': typeof DashboardGuildIdRouteWithChildren
   '/dashboard/account': typeof DashboardAccountRoute
   '/dashboard/': typeof DashboardIndexRoute
+  '/dashboard/$guildId/$section': typeof DashboardGuildIdSectionRoute
+  '/dashboard/$guildId/': typeof DashboardGuildIdIndexRoute
   '/api/public/auth/discord/callback': typeof ApiPublicAuthDiscordCallbackRoute
   '/api/public/auth/discord/login': typeof ApiPublicAuthDiscordLoginRoute
 }
@@ -78,8 +104,11 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/dashboard'
+    | '/dashboard/$guildId'
     | '/dashboard/account'
     | '/dashboard/'
+    | '/dashboard/$guildId/$section'
+    | '/dashboard/$guildId/'
     | '/api/public/auth/discord/callback'
     | '/api/public/auth/discord/login'
   fileRoutesByTo: FileRoutesByTo
@@ -87,14 +116,19 @@ export interface FileRouteTypes {
     | '/'
     | '/dashboard/account'
     | '/dashboard'
+    | '/dashboard/$guildId/$section'
+    | '/dashboard/$guildId'
     | '/api/public/auth/discord/callback'
     | '/api/public/auth/discord/login'
   id:
     | '__root__'
     | '/'
     | '/dashboard'
+    | '/dashboard/$guildId'
     | '/dashboard/account'
     | '/dashboard/'
+    | '/dashboard/$guildId/$section'
+    | '/dashboard/$guildId/'
     | '/api/public/auth/discord/callback'
     | '/api/public/auth/discord/login'
   fileRoutesById: FileRoutesById
@@ -129,12 +163,33 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardIndexRouteImport
       parentRoute: typeof DashboardRoute
     }
+    '/dashboard/$guildId': {
+      id: '/dashboard/$guildId'
+      path: '/$guildId'
+      fullPath: '/dashboard/$guildId'
+      preLoaderRoute: typeof DashboardGuildIdRouteImport
+      parentRoute: typeof DashboardRoute
+    }
     '/dashboard/account': {
       id: '/dashboard/account'
       path: '/account'
       fullPath: '/dashboard/account'
       preLoaderRoute: typeof DashboardAccountRouteImport
       parentRoute: typeof DashboardRoute
+    }
+    '/dashboard/$guildId/': {
+      id: '/dashboard/$guildId/'
+      path: '/'
+      fullPath: '/dashboard/$guildId/'
+      preLoaderRoute: typeof DashboardGuildIdIndexRouteImport
+      parentRoute: typeof DashboardGuildIdRoute
+    }
+    '/dashboard/$guildId/$section': {
+      id: '/dashboard/$guildId/$section'
+      path: '/$section'
+      fullPath: '/dashboard/$guildId/$section'
+      preLoaderRoute: typeof DashboardGuildIdSectionRouteImport
+      parentRoute: typeof DashboardGuildIdRoute
     }
     '/api/public/auth/discord/callback': {
       id: '/api/public/auth/discord/callback'
@@ -153,12 +208,27 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface DashboardGuildIdRouteChildren {
+  DashboardGuildIdSectionRoute: typeof DashboardGuildIdSectionRoute
+  DashboardGuildIdIndexRoute: typeof DashboardGuildIdIndexRoute
+}
+
+const DashboardGuildIdRouteChildren: DashboardGuildIdRouteChildren = {
+  DashboardGuildIdSectionRoute: DashboardGuildIdSectionRoute,
+  DashboardGuildIdIndexRoute: DashboardGuildIdIndexRoute,
+}
+
+const DashboardGuildIdRouteWithChildren =
+  DashboardGuildIdRoute._addFileChildren(DashboardGuildIdRouteChildren)
+
 interface DashboardRouteChildren {
+  DashboardGuildIdRoute: typeof DashboardGuildIdRouteWithChildren
   DashboardAccountRoute: typeof DashboardAccountRoute
   DashboardIndexRoute: typeof DashboardIndexRoute
 }
 
 const DashboardRouteChildren: DashboardRouteChildren = {
+  DashboardGuildIdRoute: DashboardGuildIdRouteWithChildren,
   DashboardAccountRoute: DashboardAccountRoute,
   DashboardIndexRoute: DashboardIndexRoute,
 }

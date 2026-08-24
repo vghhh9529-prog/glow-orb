@@ -205,11 +205,7 @@ function Field({
     return (
       <div className="space-y-1.5">
         <Label className="text-xs text-muted-foreground">{title}</Label>
-        <Input
-          type="number"
-          value={value}
-          onChange={(e) => onChange(Number(e.target.value))}
-        />
+        <Input type="number" value={value} onChange={(e) => onChange(Number(e.target.value))} />
       </div>
     );
   }

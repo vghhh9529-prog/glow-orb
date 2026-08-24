@@ -1,4 +1,5 @@
 import { Link } from "@tanstack/react-router";
+import type { ReactNode } from "react";
 import { useI18n } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import logo from "@/assets/glow-logo.png";
@@ -24,7 +25,7 @@ export function LangToggle() {
   );
 }
 
-export function TopBar({ right }: { right?: React.ReactNode }) {
+export function TopBar({ right }: { right?: ReactNode }) {
   const { t } = useI18n();
   return (
     <header className="sticky top-0 z-40 border-b border-border/60 bg-background/80 backdrop-blur-xl">

@@ -72,14 +72,19 @@ export async function revokeCase(guildId: string, caseId: string) {
   if (!row) throw new Error("NOT_FOUND");
 
   let applied = false;
-  if (row.action === "mute") applied = await timeoutMember(guildId, row.target_id, null, "Revoked from Glow dashboard");
-  if (row.action === "ban") applied = await unbanMember(guildId, row.target_id, "Revoked from Glow dashboard");
+  if (row.action === "mute")
+    applied = await timeoutMember(guildId, row.target_id, null, "Revoked from Glow dashboard");
+  if (row.action === "ban")
+    applied = await unbanMember(guildId, row.target_id, "Revoked from Glow dashboard");
 
   await db.from("moderation_cases").update({ active: false }).eq("id", caseId);
   return { ok: true, applied };
 }
 
-const KEYWORD_PRESETS: Record<string, { name: string; keywords?: string[]; regex?: string[]; presets?: number[] }> = {
+const KEYWORD_PRESETS: Record<
+  string,
+  { name: string; keywords?: string[]; regex?: string[]; presets?: number[] }
+> = {
   invites: {
     name: "Glow · Anti Invite",
     regex: ["(discord\\.(gg|io|me|li)|discordapp\\.com\\/invite)\\/[a-zA-Z0-9]+"],
@@ -107,11 +112,18 @@ export async function syncAutoMod(guildId: string, config: Record<string, unknow
       { type: 1, metadata: { custom_message: "🚫 تم حظر هذه الرسالة بواسطة Glow" } },
     ];
     if (logChannelId) actions.push({ type: 2, metadata: { channel_id: logChannelId } });
-    if (timeoutSeconds > 0) actions.push({ type: 3, metadata: { duration_seconds: Math.min(timeoutSeconds, 2419200) } });
+    if (timeoutSeconds > 0)
+      actions.push({ type: 3, metadata: { duration_seconds: Math.min(timeoutSeconds, 2419200) } });
     return actions;
   };
 
-  const ensureRule = async (key: string, name: string, triggerType: number, metadata: Record<string, unknown>, timeoutSeconds: number) => {
+  const ensureRule = async (
+    key: string,
+    name: string,
+    triggerType: number,
+    metadata: Record<string, unknown>,
+    timeoutSeconds: number,
+  ) => {
     const prior = existing.find((r) => r.name === name);
     if (prior) await deleteAutoModRule(guildId, prior.id);
     const res = await putAutoModRule(guildId, {
@@ -124,7 +136,9 @@ export async function syncAutoMod(guildId: string, config: Record<string, unknow
       exempt_roles: exemptRoles.slice(0, 20),
       exempt_channels: exemptChannels.slice(0, 50),
     });
-    results.push({ key, ok: res.ok, error: res.ok ? undefined : String(res.error).slice(0, 200) });
+    results.push(
+      res.ok ? { key, ok: true } : { key, ok: false, error: String(res.error).slice(0, 200) },
+    );
   };
 
   const removeRule = async (name: string) => {
@@ -151,20 +165,38 @@ export async function syncAutoMod(guildId: string, config: Record<string, unknow
   // Bad words (trigger 1 keyword)
   if (presets["badWords"]?.["enabled"]) {
     const words = ((presets["badWords"]["words"] as string[]) ?? []).filter(Boolean).slice(0, 1000);
-    await ensureRule("badWords", KEYWORD_PRESETS["badWords"]!.name, 1, { keyword_filter: words }, Number(presets["badWords"]["timeoutSeconds"] ?? 0));
+    await ensureRule(
+      "badWords",
+      KEYWORD_PRESETS["badWords"]!.name,
+      1,
+      { keyword_filter: words },
+      Number(presets["badWords"]["timeoutSeconds"] ?? 0),
+    );
   } else await removeRule(KEYWORD_PRESETS["badWords"]!.name);
 
   // Invites
   if (presets["invites"]?.["enabled"]) {
-    await ensureRule("invites", KEYWORD_PRESETS["invites"]!.name, 1, { regex_patterns: KEYWORD_PRESETS["invites"]!.regex }, Number(presets["invites"]["timeoutSeconds"] ?? 0));
+    await ensureRule(
+      "invites",
+      KEYWORD_PRESETS["invites"]!.name,
+      1,
+      { regex_patterns: KEYWORD_PRESETS["invites"]!.regex },
+      Number(presets["invites"]["timeoutSeconds"] ?? 0),
+    );
   } else await removeRule(KEYWORD_PRESETS["invites"]!.name);
 
   // Links
   if (presets["links"]?.["enabled"]) {
-    await ensureRule("links", KEYWORD_PRESETS["links"]!.name, 1, {
-      regex_patterns: KEYWORD_PRESETS["links"]!.regex,
-      allow_list: ((presets["links"]["allowlist"] as string[]) ?? []).slice(0, 100),
-    }, 0);
+    await ensureRule(
+      "links",
+      KEYWORD_PRESETS["links"]!.name,
+      1,
+      {
+        regex_patterns: KEYWORD_PRESETS["links"]!.regex,
+        allow_list: ((presets["links"]["allowlist"] as string[]) ?? []).slice(0, 100),
+      },
+      0,
+    );
   } else await removeRule(KEYWORD_PRESETS["links"]!.name);
 
   return { ok: results.every((r) => r.ok), results };
@@ -189,7 +221,12 @@ export async function listSuggestions(guildId: string, status: string) {
   return data ?? [];
 }
 
-export async function setSuggestionStatus(guildId: string, id: string, status: string, note: string) {
+export async function setSuggestionStatus(
+  guildId: string,
+  id: string,
+  status: string,
+  note: string,
+) {
   await assertGuildAccess(guildId);
   const db = await admin();
   await db
@@ -203,7 +240,14 @@ export async function setSuggestionStatus(guildId: string, id: string, status: s
 export async function guildLeaderboard(guildId: string, scope: string) {
   await assertGuildAccess(guildId);
   const db = await admin();
-  const column = scope === "daily" ? "daily_xp" : scope === "weekly" ? "weekly_xp" : scope === "monthly" ? "monthly_xp" : "xp";
+  const column =
+    scope === "daily"
+      ? "daily_xp"
+      : scope === "weekly"
+        ? "weekly_xp"
+        : scope === "monthly"
+          ? "monthly_xp"
+          : "xp";
   const { data } = await db
     .from("member_levels")
     .select("user_id, username, avatar, xp, level, daily_xp, weekly_xp, monthly_xp")
