@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "items": [
+    {
+      "id": "command-server",
+      "title": "إضافة أمر /server و /user و /avatar",
+      "priority": "high",
+      "status": "planned",
+      "acceptanceTests": ["command registration includes the command", "handler returns an ephemeral-safe Discord response"]
+    },
+    {
+      "id": "welcome-leave",
+      "title": "إكمال رسائل الترحيب والمغادرة مع المتغيرات والصورة",
+      "priority": "high",
+      "status": "planned",
+      "acceptanceTests": ["member join sends configured channel message", "member leave sends configured message", "disabled module sends nothing"]
+    },
+    {
+      "id": "leveling-voice",
+      "title": "إضافة XP للصوت مع مضاعفات الرولات والقنوات",
+      "priority": "high",
+      "status": "planned",
+      "acceptanceTests": ["voice activity updates member_levels with cooldown", "excluded channel and role receive no XP", "level-up role is applied when configured"]
+    },
+    {
+      "id": "moderation-audit",
+      "title": "ربط إجراءات الإشراف بسجل moderation_cases وAction Log",
+      "priority": "medium",
+      "status": "planned",
+      "acceptanceTests": ["ban/kick/timeout creates a case", "case can be listed from dashboard", "failed Discord action is reported"]
+    },
+    {
+      "id": "community-modules",
+      "title": "بناء reaction roles وreminders وstarboard تدريجياً",
+      "priority": "medium",
+      "status": "planned",
+      "acceptanceTests": ["each module has a persisted config", "each module has an event handler or command", "each module has an isolated test"]
+    },
+    {
+      "id": "dashboard-polish",
+      "title": "تحسين معاينات الرسائل وحالات الحفظ والفراغ والأخطاء في الداشبورد",
+      "priority": "medium",
+      "status": "planned",
+      "acceptanceTests": ["enabled state is visibly distinct", "save success and failure are surfaced", "empty rule lists show a useful next action"]
+    }
+  ]
+}

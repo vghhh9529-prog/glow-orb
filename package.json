@@ -7,6 +7,8 @@
     "dev": "vite dev",
     "bot": "tsx bot/index.ts",
     "bot:commands": "tsx bot/register-commands.ts",
+    "autopilot": "node scripts/glow-autopilot.mjs",
+    "autopilot:once": "node scripts/glow-autopilot.mjs --once",
     "build": "vite build",
     "build:dev": "vite build --mode development",
     "preview": "vite preview",
