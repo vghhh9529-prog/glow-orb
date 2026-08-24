@@ -8,10 +8,14 @@ function cookies(request: Request): Record<string, string> {
   const header = request.headers.get("cookie");
   if (!header) return out;
   for (const part of header.split(";")) {
-    const [k, ...rest] = part.trim().split("=");
-    if (k) out[k] = decodeURIComponent(rest.join("="));
+    const [key, ...rest] = part.trim().split("=");
+    if (key) out[key] = decodeURIComponent(rest.join("="));
   }
   return out;
+}
+
+function safeErrorCode(value: string) {
+  return value.replace(/[^a-z0-9_-]/gi, "_").slice(0, 80) || "unknown";
 }
 
 export const Route = createFileRoute("/api/public/auth/discord/callback")({
@@ -23,23 +27,30 @@ export const Route = createFileRoute("/api/public/auth/discord/callback")({
         const code = url.searchParams.get("code");
         const state = url.searchParams.get("state");
         const jar = cookies(request);
+        let stage = "validate";
 
-        const fail = (reason: string) =>
-          new Response(null, {
+        const fail = (reason: string, detail?: string) => {
+          const params = new URLSearchParams({ auth_error: reason });
+          if (detail) params.set("auth_stage", safeErrorCode(detail));
+          return new Response(null, {
             status: 302,
-            headers: { Location: `${origin}/?auth_error=${encodeURIComponent(reason)}` },
+            headers: { Location: `${origin}/?${params.toString()}` },
           });
+        };
 
         if (!code) return fail(url.searchParams.get("error") ?? "missing_code");
         if (!state || state !== jar["glow_oauth_state"]) return fail("state_mismatch");
 
         try {
+          stage = "token_exchange";
           const token = await exchangeCode(code, callbackUrl(request));
+
+          stage = "fetch_profile";
           const profile = await fetchCurrentUser(token.access_token);
 
+          stage = "save_profile";
           const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
           const expiresAt = new Date(Date.now() + token.expires_in * 1000).toISOString();
-
           const { error: userError } = await supabaseAdmin.from("discord_users").upsert(
             {
               id: profile.id,
@@ -56,12 +67,15 @@ export const Route = createFileRoute("/api/public/auth/discord/callback")({
           );
           if (userError) throw userError;
 
-          await supabaseAdmin.from("glow_wallets").upsert(
-            { user_id: profile.id },
-            { onConflict: "user_id", ignoreDuplicates: true },
-          );
+          stage = "create_wallet";
+          const { error: walletError } = await supabaseAdmin
+            .from("glow_wallets")
+            .upsert({ user_id: profile.id }, { onConflict: "user_id", ignoreDuplicates: true });
+          if (walletError) throw walletError;
 
-          const sessionToken = crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
+          stage = "create_session";
+          const sessionToken =
+            crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
           const sessionExpires = new Date(Date.now() + SESSION_TTL_DAYS * 86400_000);
           const { error: sessionError } = await supabaseAdmin.from("app_sessions").insert({
             token: sessionToken,
@@ -70,6 +84,7 @@ export const Route = createFileRoute("/api/public/auth/discord/callback")({
           });
           if (sessionError) throw sessionError;
 
+          stage = "redirect";
           const next = jar["glow_oauth_next"] ?? "/dashboard";
           const headers = new Headers();
           headers.append("Location", `${origin}${next.startsWith("/") ? next : "/dashboard"}`);
@@ -78,8 +93,8 @@ export const Route = createFileRoute("/api/public/auth/discord/callback")({
           headers.append("Set-Cookie", "glow_oauth_next=; Path=/; HttpOnly; Secure; Max-Age=0");
           return new Response(null, { status: 302, headers });
         } catch (error) {
-          console.error("Discord OAuth callback failed", error);
-          return fail("oauth_failed");
+          console.error(`[OAuth] Discord callback failed at ${stage}`, error);
+          return fail("oauth_failed", stage);
         }
       },
     },
