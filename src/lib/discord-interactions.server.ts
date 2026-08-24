@@ -1,4 +1,4 @@
-import { fetchBotGuild } from "./discord-api.server";
+import { fetchBotGuild, fetchDiscordUser } from "./discord-api.server";
 import { ensureGuildRow } from "./guilds.server";
 
 const DAILY_COOLDOWN_MS = 12 * 60 * 60_000;
@@ -220,6 +220,41 @@ async function leaderboard(payload: DiscordInteractionPayload) {
   );
 }
 
+async function serverInfo(payload: DiscordInteractionPayload) {
+  const guildId = payload.guild_id;
+  if (!guildId) return interactionResponse("هذا الأمر يعمل داخل السيرفر فقط.", { ephemeral: true });
+  const guild = await fetchBotGuild(guildId);
+  if (!guild) return interactionResponse("تعذر قراءة معلومات السيرفر حالياً.", { ephemeral: true });
+  return interactionResponse(
+    `**${guild.name}**\nالأعضاء: **${Number(guild.approximate_member_count ?? 0).toLocaleString("ar-SA")}** · المتصلون: **${Number(guild.approximate_presence_count ?? 0).toLocaleString("ar-SA")}**\nالمالك: <@${guild.owner_id}>\nمعرّف السيرفر: \`${guild.id}\``,
+  );
+}
+
+async function userInfo(payload: DiscordInteractionPayload, user: InteractionUser) {
+  const targetId = interactionOption<string>(payload, "member") ?? user.id;
+  const target = targetId === user.id ? user : await fetchDiscordUser(targetId);
+  if (!target) return interactionResponse("تعذر العثور على هذا العضو.", { ephemeral: true });
+  const displayName = target.global_name ?? target.username;
+  return interactionResponse(
+    `**${displayName}**\nاسم الحساب: \`${target.username}\`\nالمعرّف: \`${target.id}\`\nالصورة: ${target.avatar ? target.avatar : "لا توجد صورة"}`,
+  );
+}
+
+async function avatarInfo(payload: DiscordInteractionPayload, user: InteractionUser) {
+  const targetId = interactionOption<string>(payload, "member") ?? user.id;
+  const target = targetId === user.id ? user : await fetchDiscordUser(targetId);
+  if (!target) return interactionResponse("تعذر العثور على هذا العضو.", { ephemeral: true });
+  return interactionResponse(
+    `صورة **${target.global_name ?? target.username}**:\n${target.avatar ?? "لا توجد صورة متاحة."}`,
+  );
+}
+
+async function helpInfo() {
+  return interactionResponse(
+    "**أوامر Glow**\n`/server` معلومات السيرفر · `/user` معلومات عضو · `/avatar` صورة عضو\n`/rank` اللفل وXP · `/leaderboard` الصدارة · `/suggest` اقتراح\n`/daily` مكافأة Glow · `/balance` الرصيد · `/profile` الملف · `/glow` رابط الداشبورد",
+  );
+}
+
 async function suggest(payload: DiscordInteractionPayload, user: InteractionUser) {
   const guildId = payload.guild_id;
   if (!guildId) return interactionResponse("هذا الأمر يعمل داخل السيرفر فقط.", { ephemeral: true });
@@ -264,5 +299,9 @@ export async function handleDiscordInteraction(payload: DiscordInteractionPayloa
       `ملفك في Glow: **${user.global_name ?? user.username}**\nالأوامر: /balance · /rank · /daily`,
       { ephemeral: true },
     );
+  if (command === "server") return serverInfo(payload);
+  if (command === "user") return userInfo(payload, user);
+  if (command === "avatar") return avatarInfo(payload, user);
+  if (command === "help") return helpInfo();
   return interactionResponse("هذا الأمر غير معروف.", { ephemeral: true });
 }

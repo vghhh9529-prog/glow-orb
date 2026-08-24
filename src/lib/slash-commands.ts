@@ -9,9 +9,7 @@ export const SLASH_COMMANDS = [
     name: "balance",
     description: "اعرض رصيدك من عملة Glow",
     type: 1,
-    options: [
-      { name: "user", description: "عضو آخر", type: 6, required: false },
-    ],
+    options: [{ name: "user", description: "عضو آخر", type: 6, required: false }],
   },
   {
     name: "rank",
@@ -56,6 +54,28 @@ export const SLASH_COMMANDS = [
   {
     name: "profile",
     description: "ملفك الشخصي في Glow",
+    type: 1,
+  },
+  {
+    name: "server",
+    description: "اعرض معلومات السيرفر الحالية",
+    type: 1,
+  },
+  {
+    name: "user",
+    description: "اعرض معلومات عضو في السيرفر",
+    type: 1,
+    options: [{ name: "member", description: "العضو المطلوب", type: 6, required: false }],
+  },
+  {
+    name: "avatar",
+    description: "اعرض رابط صورة العضو",
+    type: 1,
+    options: [{ name: "member", description: "العضو المطلوب", type: 6, required: false }],
+  },
+  {
+    name: "help",
+    description: "اعرض أوامر Glow المتاحة",
     type: 1,
   },
 ] as const;

@@ -54,6 +54,17 @@ async function botFetchResult<T>(path: string): Promise<{ data: T | null; status
   return { data: (await res.json()) as T, status: res.status };
 }
 
+export interface DiscordUserProfile {
+  id: string;
+  username: string;
+  global_name?: string | null;
+  avatar?: string | null;
+}
+
+export async function fetchDiscordUser(userId: string) {
+  return await botFetch<DiscordUserProfile>(`/users/${encodeURIComponent(userId)}`);
+}
+
 export async function fetchUserGuilds(accessToken: string): Promise<DiscordGuildSummary[]> {
   const res = await fetch(`${API}/users/@me/guilds`, {
     headers: { Authorization: `Bearer ${accessToken}` },
