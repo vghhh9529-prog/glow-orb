@@ -1,8 +1,16 @@
 const DISCORD_PREVIEW_REDIRECT_URI =
   "https://id-preview--fa584a01-062d-40c8-a629-78cea86c73db.lovable.app/api/public/auth/discord/callback";
+const DISCORD_CALLBACK_PATH = "/api/public/auth/discord/callback";
 
-function configuredRedirectUri() {
-  return process.env["DISCORD_REDIRECT_URI"]?.trim() || DISCORD_PREVIEW_REDIRECT_URI;
+function configuredRedirectUri(request?: Request) {
+  const configured = process.env["DISCORD_REDIRECT_URI"]?.trim();
+  if (configured) return configured;
+
+  // Use the actual deployment origin so the live Lovable site does not send
+  // users back to the preview project after Discord authorization.
+  if (request) return `${requestOrigin(request)}${DISCORD_CALLBACK_PATH}`;
+
+  return DISCORD_PREVIEW_REDIRECT_URI;
 }
 
 export function requestOrigin(request: Request): string {
@@ -15,6 +23,6 @@ export function requestOrigin(request: Request): string {
   return `${proto}://${host}`;
 }
 
-export function callbackUrl(_request: Request): string {
-  return configuredRedirectUri();
+export function callbackUrl(request: Request): string {
+  return configuredRedirectUri(request);
 }
