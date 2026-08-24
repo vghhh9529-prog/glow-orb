@@ -303,7 +303,7 @@ async function handleAutomations(message: Message) {
       if (!trigger || !content.includes(trigger)) continue;
       const response = String(data.response ?? data.reply ?? data.message ?? "").trim();
       console.log(
-        `[Glow Bot] Auto Reply matched rule \"${String(item.name ?? trigger)}\" in guild ${message.guild.id}`,
+        `[Glow Bot] Auto Reply matched rule "${String(item.name ?? trigger)}" in guild ${message.guild.id}`,
       );
       if (response) {
         await message

@@ -7,6 +7,10 @@
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 
 export default defineConfig({
+  // Railway runs the full TanStack Start server, including OAuth and database routes.
+  // Keep Cloudflare as the default for Lovable, but pin this repository build to Node
+  // when it is deployed as the permanent dashboard service.
+  nitro: { preset: process.env["NITRO_PRESET"] ?? "node-server" },
   tanstackStart: {
     // Redirect TanStack Start's bundled server entry to src/server.ts (our SSR error wrapper).
     // nitro/vite builds from this
