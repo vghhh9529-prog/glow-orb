@@ -1,8 +1,24 @@
-import { createCanvas, loadImage, type Image, type SKRSContext2D } from "@napi-rs/canvas";
+import { createCanvas, GlobalFonts, loadImage, type Image, type SKRSContext2D } from "@napi-rs/canvas";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 
 type CanvasRenderingContext2D = SKRSContext2D;
 
 const DISCORD_EPOCH = 1_420_070_400_000;
+const CARD_FONT_FAMILY = "Glow Noto Sans";
+let cardFontsReady = false;
+
+function ensureCardFonts() {
+  if (cardFontsReady) return;
+  const fontFiles = [
+    join(process.cwd(), "src/assets/fonts/NotoSans-Regular.ttf"),
+    join(process.cwd(), "src/assets/fonts/NotoSans-Bold.ttf"),
+  ];
+  for (const fontPath of fontFiles) {
+    if (existsSync(fontPath)) GlobalFonts.registerFromPath(fontPath, CARD_FONT_FAMILY);
+  }
+  cardFontsReady = true;
+}
 
 export interface GlowCardStats {
   username: string;
@@ -68,7 +84,9 @@ function roundedRect(ctx: CanvasRenderingContext2D, x: number, y: number, width:
 }
 
 function text(ctx: CanvasRenderingContext2D, value: string, x: number, y: number, size: number, color: string, weight = "600") {
-  ctx.font = `${weight} ${size}px Inter, Arial, sans-serif`;
+  ensureCardFonts();
+  const fontWeight = Number(weight) >= 700 ? "bold" : "normal";
+  ctx.font = `${fontWeight} ${size}px "${CARD_FONT_FAMILY}"`;
   ctx.fillStyle = color;
   ctx.fillText(value, x, y);
 }
