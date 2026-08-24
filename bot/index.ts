@@ -285,8 +285,11 @@ async function handleAutomations(message: Message) {
   if (!message.guild) return;
   const autoReply = await moduleConfig(message.guild.id, "autoreply");
   if (autoReply.enabled && !(autoReply.config.ignoreBots && message.author.bot)) {
-    const content = message.content.toLowerCase().trim();
+    const content = (message.content || message.cleanContent || "").toLowerCase().trim();
     const items = await guildItems(message.guild.id, "autoreply");
+    console.log(
+      `[Glow Bot] Auto Reply check guild=${message.guild.id} channel=${message.channelId} contentLength=${content.length} rules=${items.length}`,
+    );
     if (items.length === 0) {
       console.warn(
         `[Glow Bot] Auto Reply is enabled but has no active rules in guild ${message.guild.id}`,
@@ -294,11 +297,11 @@ async function handleAutomations(message: Message) {
     }
     for (const item of items) {
       const data = (item.data ?? {}) as Record<string, unknown>;
-      const trigger = String(data.trigger ?? "")
+      const trigger = String(data.trigger ?? data.keyword ?? data.phrase ?? "")
         .toLowerCase()
         .trim();
       if (!trigger || !content.includes(trigger)) continue;
-      const response = String(data.response ?? "").trim();
+      const response = String(data.response ?? data.reply ?? data.message ?? "").trim();
       console.log(
         `[Glow Bot] Auto Reply matched rule \"${String(item.name ?? trigger)}\" in guild ${message.guild.id}`,
       );
@@ -432,6 +435,12 @@ client.on(Events.GuildMemberAdd, async (member) => {
 });
 
 client.on(Events.MessageCreate, async (message) => {
+  if (message.guild) {
+    const contentLength = (message.content || message.cleanContent || "").length;
+    console.log(
+      `[Glow Bot] MessageCreate guild=${message.guild.id} channel=${message.channelId} authorBot=${message.author.bot} contentLength=${contentLength}`,
+    );
+  }
   await handleAutomations(message).catch((error: unknown) =>
     console.error("Automation failed", error),
   );
