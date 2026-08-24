@@ -1,5 +1,3 @@
-/** Server-only helpers for talking to the Discord REST API. */
-
 const API = "https://discord.com/api/v10";
 
 export function botToken(): string {
@@ -76,14 +74,50 @@ export async function fetchGuildChannels(guildId: string) {
   return (await botFetch<DiscordChannel[]>(`/guilds/${guildId}/channels`)) ?? [];
 }
 
+export class DiscordOAuthError extends Error {
+  constructor(
+    public readonly status: number,
+    public readonly code: string,
+    public readonly description: string,
+  ) {
+    super(`Discord OAuth failed: ${status} ${code}`);
+    this.name = "DiscordOAuthError";
+  }
+}
+
+function oauthError(status: number, body: string): DiscordOAuthError {
+  try {
+    const parsed = JSON.parse(body) as { error?: string; error_description?: string };
+    return new DiscordOAuthError(
+      status,
+      parsed.error ?? "unknown_error",
+      parsed.error_description ?? "Discord rejected the token request",
+    );
+  } catch {
+    return new DiscordOAuthError(status, "unknown_error", "Discord rejected the token request");
+  }
+}
+
+async function readTokenResponse(response: Response) {
+  const body = await response.text();
+  if (!response.ok) throw oauthError(response.status, body);
+  return JSON.parse(body) as {
+    access_token: string;
+    refresh_token: string;
+    expires_in: number;
+    scope: string;
+  };
+}
+
 export async function exchangeCode(code: string, redirectUri: string) {
+  const secret = clientSecret();
   const body = new URLSearchParams({
     grant_type: "authorization_code",
     code,
     redirect_uri: redirectUri,
   });
-  const basic = btoa(`${CLIENT_ID}:${clientSecret()}`);
-  const res = await fetch(`${API}/oauth2/token`, {
+  const basic = btoa(`${CLIENT_ID}:${secret}`);
+  const response = await fetch(`${API}/oauth2/token`, {
     method: "POST",
     headers: {
       Authorization: `Basic ${basic}`,
@@ -91,13 +125,28 @@ export async function exchangeCode(code: string, redirectUri: string) {
     },
     body,
   });
-  if (!res.ok) throw new Error(`Token exchange failed: ${res.status} ${await res.text()}`);
-  return (await res.json()) as {
-    access_token: string;
-    refresh_token: string;
-    expires_in: number;
-    scope: string;
-  };
+
+  try {
+    return await readTokenResponse(response);
+  } catch (error) {
+    // Some older Discord-compatible proxies accept client credentials in the form body.
+    // Only retry that legacy shape for an authentication rejection; authorization-code
+    // and redirect errors must not consume a second request with the same one-time code.
+    if (!(error instanceof DiscordOAuthError) || error.status !== 401) throw error;
+    const legacyBody = new URLSearchParams({
+      client_id: CLIENT_ID,
+      client_secret: secret,
+      grant_type: "authorization_code",
+      code,
+      redirect_uri: redirectUri,
+    });
+    const legacyResponse = await fetch(`${API}/oauth2/token`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: legacyBody,
+    });
+    return readTokenResponse(legacyResponse);
+  }
 }
 
 export async function fetchCurrentUser(accessToken: string) {

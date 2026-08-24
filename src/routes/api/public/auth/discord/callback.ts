@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { exchangeCode, fetchCurrentUser } from "@/lib/discord-api.server";
+import { DiscordOAuthError, exchangeCode, fetchCurrentUser } from "@/lib/discord-api.server";
 import { callbackUrl, requestOrigin } from "@/lib/origin.server";
 import { SESSION_TTL_DAYS, buildSessionCookie } from "@/lib/session.server";
 
@@ -94,6 +94,9 @@ export const Route = createFileRoute("/api/public/auth/discord/callback")({
           return new Response(null, { status: 302, headers });
         } catch (error) {
           console.error(`[OAuth] Discord callback failed at ${stage}`, error);
+          if (stage === "token_exchange" && error instanceof DiscordOAuthError) {
+            return fail("oauth_failed", `${stage}_${error.status}_${error.code}`);
+          }
           return fail("oauth_failed", stage);
         }
       },
