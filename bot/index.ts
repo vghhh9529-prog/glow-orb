@@ -2,6 +2,7 @@ import "dotenv/config";
 
 import {
   ActionRowBuilder,
+  ActivityType,
   AuditLogEvent,
   ButtonBuilder,
   ButtonStyle,
@@ -61,6 +62,18 @@ const client = new Client({
 const messageCooldowns = new Map<string, number>();
 const customCommandCooldowns = new Map<string, number>();
 const voiceCreatedChannels = new Set<string>();
+
+const GLOW_CHANNELS = {
+  status: "1541166366160060468",
+  updates: "1541166368232312892",
+  rules: "1541166355116466236",
+  getStarted: "1541166351929049118",
+  about: "1541166360929902633",
+  blueHeart: "1541166399802708069",
+  suggestions: "1541166392227799171",
+} as const;
+
+const RELEASE_NOTES = process.env["RELEASE_NOTES"] ?? "Improved protection, advanced logs, support tickets and community tools.";
 
 function database() {
   return supabaseAdmin;
@@ -798,12 +811,138 @@ async function logMemberLeave(member: GuildMember) {
   });
 }
 
+async function persistSystemMessage(guildId: string, marker: string, channelId: string, messageId: string) {
+  const record = { guild_id: guildId, kind: "system_messages", name: marker, enabled: true, data: { marker, messageId, channelId }, updated_at: new Date().toISOString() };
+  const { data: existing } = await database().from("guild_items").select("id").eq("guild_id", guildId).eq("kind", "system_messages").eq("name", marker).limit(1).maybeSingle();
+  if (existing?.id) await database().from("guild_items").update(record).eq("id", existing.id).eq("guild_id", guildId);
+  else await database().from("guild_items").insert(record);
+}
+
+async function upsertBotEmbed(channelId: string, marker: string, embed: EmbedBuilder) {
+  const channel = await client.channels.fetch(channelId).catch(() => null);
+  if (!channel?.isTextBased() || !("messages" in channel) || !("send" in channel)) return false;
+  const guildId = "guildId" in channel && typeof channel.guildId === "string" ? channel.guildId : null;
+  const saved = guildId
+    ? await database().from("guild_items").select("id, data").eq("guild_id", guildId).eq("kind", "system_messages").contains("data", { marker }).maybeSingle()
+    : null;
+  const savedData = (saved?.data?.data ?? {}) as Record<string, unknown>;
+  const savedMessageId = typeof savedData["messageId"] === "string" ? savedData["messageId"] : null;
+  const existingById = savedMessageId ? await channel.messages.fetch(savedMessageId).catch(() => null) : null;
+  const messages = existingById ? null : await channel.messages.fetch({ limit: 100 }).catch(() => null);
+  const existing = existingById ?? messages?.find((message) => message.author.id === client.user?.id && message.embeds.some((item) => item.footer?.text === marker));
+  if (existing) {
+    await existing.edit({ embeds: [embed] }).catch((error: unknown) => console.error(`[Glow Bot] Could not update fixed message ${marker}`, error));
+    if (guildId) await persistSystemMessage(guildId, marker, channelId, existing.id);
+    return true;
+  }
+  const sent = await channel.send({ embeds: [embed] }).catch((error: unknown) => {
+    console.error(`[Glow Bot] Could not send fixed message ${marker}`, error);
+    return null;
+  });
+  if (sent && guildId) await persistSystemMessage(guildId, marker, channelId, sent.id);
+  return Boolean(sent);
+}
+
+function fixedEmbed(marker: string, title: string, description: string, color: number) {
+  return new EmbedBuilder()
+    .setColor(color)
+    .setTitle(title)
+    .setDescription(description)
+    .setTimestamp()
+    .setFooter({ text: marker });
+}
+
+async function syncCommunityMessages() {
+  await upsertBotEmbed(
+    GLOW_CHANNELS.rules,
+    "glow-rules",
+    fixedEmbed(
+      "glow-rules",
+      "Glow · Server & Bot Rules",
+      "Please keep the community respectful and safe. No spam, harassment, raids, scams, mass mentions or unsafe links. Follow Discord Terms of Service and the server team instructions.\n\nNeed help? Open a ticket from the Support panel.",
+      0x7c5cff,
+    ),
+  );
+  await upsertBotEmbed(
+    GLOW_CHANNELS.getStarted,
+    "glow-get-started",
+    fixedEmbed(
+      "glow-get-started",
+      "Get Started with Glow",
+      "Glow is a Discord community control center for protection, moderation, leveling, tickets, automation and useful server insights.\n\nStart by checking `/help`, `/profile`, `/rank`, `/balance` and `/daily`. Server managers can configure everything from the Glow Dashboard.",
+      0x22c55e,
+    ),
+  );
+  await upsertBotEmbed(
+    GLOW_CHANNELS.about,
+    "glow-about",
+    fixedEmbed(
+      "glow-about",
+      "About Glow",
+      "Glow brings your Discord server tools into one calm workspace: Anti-Nuke protection, AutoMod, advanced logs, support tickets, XP and leveling, economy, suggestions and automation.\n\nUseful commands include `/help`, `/user`, `/profile`, `/rank`, `/top`, `/server`, `/balance`, `/daily`, `/ticket` and `/report`.\n\nDashboard: https://glowbot.up.railway.app/",
+      0x38bdf8,
+    ),
+  );
+  const release = (process.env["RAILWAY_GIT_COMMIT_SHA"] || process.env["GLOW_RELEASE"] || "current-release").slice(0, 12);
+  await upsertBotEmbed(
+    GLOW_CHANNELS.updates,
+    `glow-update:${release}`,
+    fixedEmbed(
+      `glow-update:${release}`,
+      "Glow bot update",
+      `${RELEASE_NOTES}\n\nThis release is active across the bot and Dashboard. Settings remain stored per server, so a restart does not reset your configuration.`,
+      0x8b5cf6,
+    ),
+  );
+}
+
+async function syncBotStatus(status: "online" | "offline") {
+  const isOnline = status === "online";
+  await upsertBotEmbed(
+    GLOW_CHANNELS.status,
+    "glow-status",
+    fixedEmbed(
+      "glow-status",
+      isOnline ? "Glow is Online" : "Glow is Offline",
+      isOnline
+        ? "The bot is connected and ready.\n\nStatus: **Idle**\nLast heartbeat: <t:${Math.floor(Date.now() / 1000)}:R>"
+        : "The bot is currently offline or restarting. Discord will show the live connection state automatically.",
+      isOnline ? 0x22c55e : 0xef4444,
+    ),
+  );
+}
+
+async function handleFixedCommunityChannels(message: Message) {
+  if (message.author.bot) return;
+  if (message.channelId === GLOW_CHANNELS.blueHeart) {
+    await message.react("💙").catch((error: unknown) => console.error("Blue heart reaction failed", error));
+  }
+  if (message.channelId === GLOW_CHANNELS.suggestions) {
+    await message.reply("Thanks for your suggestion! The Glow team will review it.").catch((error: unknown) => console.error("Suggestion reply failed", error));
+  }
+}
+
+let shuttingDown = false;
+
+async function shutdownBot() {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  await syncBotStatus("offline").catch((error: unknown) => console.error("Offline status update failed", error));
+  client.destroy();
+}
+
 client.once(Events.ClientReady, async (readyClient) => {
   console.log(
     `[Glow Bot] Online as ${readyClient.user.tag} in ${readyClient.guilds.cache.size} server(s)`,
   );
+  readyClient.user.setPresence({
+    status: "idle",
+    activities: [{ name: "Glow Community", type: ActivityType.Watching }],
+  });
   await registerSlashCommands([...SLASH_COMMANDS]);
   console.log(`[Glow Bot] Registered ${SLASH_COMMANDS.length} slash commands`);
+  await syncBotStatus("online").catch((error: unknown) => console.error("Online status sync failed", error));
+  await syncCommunityMessages().catch((error: unknown) => console.error("Community message sync failed", error));
 });
 
 client.on(Events.InteractionCreate, async (interaction) => {
@@ -1100,6 +1239,9 @@ client.on(Events.MessageCreate, async (message) => {
       `[Glow Bot] MessageCreate guild=${message.guild.id} channel=${message.channelId} authorBot=${message.author.bot} contentLength=${contentLength}`,
     );
   }
+  await handleFixedCommunityChannels(message).catch((error: unknown) =>
+    console.error("Fixed community channel action failed", error),
+  );
   await handleProtectionMessage(message).catch((error: unknown) =>
     console.error("Protection message check failed", error),
   );
@@ -1132,8 +1274,8 @@ client.on(Events.VoiceStateUpdate, async (oldState, newState) => {
 
 client.on(Events.Error, (error) => console.error("[Glow Bot] Discord client error", error));
 
-process.on("SIGTERM", () => client.destroy());
-process.on("SIGINT", () => client.destroy());
+process.on("SIGTERM", () => void shutdownBot());
+process.on("SIGINT", () => void shutdownBot());
 
 client.login(botToken()).catch((error: unknown) => {
   console.error("[Glow Bot] Login failed. Check DISCORD_BOT_TOKEN and enabled intents.", error);
