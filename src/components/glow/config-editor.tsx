@@ -11,7 +11,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { X } from "lucide-react";
 
 export interface Option {
@@ -372,8 +371,4 @@ export function ConfigEditor({
   onChange: (next: Record<string, unknown>) => void;
 }) {
   return <ObjectFields data={config} ctx={{ roles, channels }} onChange={onChange} />;
-}
-
-export function Buttonish() {
-  return <Button />;
 }
