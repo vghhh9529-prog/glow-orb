@@ -31,14 +31,29 @@ export function LangToggle() {
   );
 }
 
-export function TopBar({ right }: { right?: ReactNode }) {
+export function TopBar({ right, nav = false }: { right?: ReactNode; nav?: boolean }) {
   const { t } = useI18n();
   return (
     <header className="sticky top-0 z-40 border-b border-border/60 bg-background/80 backdrop-blur-xl">
       <div className="mx-auto flex h-16 w-full max-w-7xl items-center justify-between px-4">
-        <Link to="/">
-          <GlowMark />
-        </Link>
+        <div className="flex items-center gap-6">
+          <Link to="/">
+            <GlowMark />
+          </Link>
+          {nav && (
+            <nav className="hidden items-center gap-1 md:flex" aria-label={t("التنقل الرئيسي", "Primary navigation")}>
+              <a href="#features" className="rounded-lg px-3 py-2 text-xs font-semibold text-muted-foreground transition-colors hover:bg-primary/10 hover:text-foreground">
+                {t("المزايا", "Features")}
+              </a>
+              <a href="#systems" className="rounded-lg px-3 py-2 text-xs font-semibold text-muted-foreground transition-colors hover:bg-primary/10 hover:text-foreground">
+                {t("الأنظمة", "Systems")}
+              </a>
+              <a href="#commands" className="rounded-lg px-3 py-2 text-xs font-semibold text-muted-foreground transition-colors hover:bg-primary/10 hover:text-foreground">
+                {t("الأوامر", "Commands")}
+              </a>
+            </nav>
+          )}
+        </div>
         <div className="flex items-center gap-2">
           <a
             href={SUPPORT_SERVER_URL}

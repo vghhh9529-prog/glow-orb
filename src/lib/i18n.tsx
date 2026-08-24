@@ -21,10 +21,10 @@ interface I18nValue {
 
 const I18nContext = createContext<I18nValue | null>(null);
 
-const STORAGE_KEY = "glow.lang";
+const STORAGE_KEY = "glow.lang.v2";
 
 export function I18nProvider({ children }: { children: ReactNode }) {
-  const [lang, setLangState] = useState<Lang>("ar");
+  const [lang, setLangState] = useState<Lang>("en");
 
   useEffect(() => {
     const stored = window.localStorage.getItem(STORAGE_KEY);
@@ -61,11 +61,11 @@ export function useI18n(): I18nValue {
   const ctx = useContext(I18nContext);
   if (!ctx) {
     return {
-      lang: "ar",
-      dir: "rtl",
+      lang: "en",
+      dir: "ltr",
       setLang: () => {},
       toggle: () => {},
-      t: (ar: string) => ar,
+      t: (_ar: string, en: string) => en,
     };
   }
   return ctx;

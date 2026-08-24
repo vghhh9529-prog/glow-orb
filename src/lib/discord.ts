@@ -51,6 +51,7 @@ export const MODULE_KEYS = [
   "autointeraction",
   "automod",
   "protection",
+  "customcommands",
 ] as const;
 
 export type ModuleKey = (typeof MODULE_KEYS)[number];

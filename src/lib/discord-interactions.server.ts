@@ -1,4 +1,4 @@
-import { fetchBotGuild, fetchDiscordUser } from "./discord-api.server";
+import { fetchBotGuild, fetchDiscordUser, fetchGuildRoles } from "./discord-api.server";
 import { ensureGuildRow } from "./guilds.server";
 
 const DAILY_COOLDOWN_MS = 12 * 60 * 60_000;
@@ -249,9 +249,23 @@ async function avatarInfo(payload: DiscordInteractionPayload, user: InteractionU
   );
 }
 
+async function rolesInfo(payload: DiscordInteractionPayload) {
+  const guildId = payload.guild_id;
+  if (!guildId) return interactionResponse("هذا الأمر يعمل داخل السيرفر فقط.", { ephemeral: true });
+  const roles = (await fetchGuildRoles(guildId)).filter((role) => !role.managed).sort((a, b) => b.position - a.position);
+  if (roles.length === 0) return interactionResponse("لا توجد رولات قابلة للعرض حالياً.", { ephemeral: true });
+  const visible = roles.slice(0, 20).map((role) => `• **${role.name}** · \`${role.id}\``).join("\n");
+  const suffix = roles.length > 20 ? `\n… و ${roles.length - 20} رول إضافي.` : "";
+  return interactionResponse(`**رولات السيرفر (${roles.length})**\n${visible}${suffix}`);
+}
+
+async function pingInfo() {
+  return interactionResponse("**Glow is online.** الاتصال بالـGateway والداشبورد يعملان.");
+}
+
 async function helpInfo() {
   return interactionResponse(
-    "**أوامر Glow**\n`/server` معلومات السيرفر · `/user` معلومات عضو · `/avatar` صورة عضو\n`/rank` اللفل وXP · `/leaderboard` الصدارة · `/suggest` اقتراح\n`/daily` مكافأة Glow · `/balance` الرصيد · `/profile` الملف · `/glow` رابط الداشبورد",
+    "**أوامر Glow**\n`/server` معلومات السيرفر · `/roles` رولات السيرفر · `/user` معلومات عضو · `/avatar` صورة عضو\n`/rank` اللفل وXP · `/leaderboard` الصدارة · `/suggest` اقتراح\n`/daily` مكافأة Glow · `/balance` الرصيد · `/profile` الملف · `/ping` حالة Glow · `/glow` رابط الداشبورد",
   );
 }
 
@@ -300,6 +314,8 @@ export async function handleDiscordInteraction(payload: DiscordInteractionPayloa
       { ephemeral: true },
     );
   if (command === "server") return serverInfo(payload);
+  if (command === "roles") return rolesInfo(payload);
+  if (command === "ping") return pingInfo();
   if (command === "user") return userInfo(payload, user);
   if (command === "avatar") return avatarInfo(payload, user);
   if (command === "help") return helpInfo();

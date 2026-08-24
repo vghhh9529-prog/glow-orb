@@ -68,6 +68,16 @@ export const SLASH_COMMANDS = [
     options: [{ name: "member", description: "العضو المطلوب", type: 6, required: false }],
   },
   {
+    name: "roles",
+    description: "اعرض رولات السيرفر الحالية",
+    type: 1,
+  },
+  {
+    name: "ping",
+    description: "تحقق من اتصال Glow وسرعة الاستجابة",
+    type: 1,
+  },
+  {
     name: "avatar",
     description: "اعرض رابط صورة العضو",
     type: 1,

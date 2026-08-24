@@ -129,6 +129,12 @@ export const MODULE_DEFAULTS: Record<ModuleKey, Record<string, unknown>> = {
       serverUpdate: { enabled: false, limit: 2, windowSeconds: 60, punishment: "removeRoles" },
     },
   },
+  customcommands: {
+    prefix: "!",
+    ignoreBots: true,
+    deleteTrigger: false,
+    cooldownSeconds: 3,
+  },
 };
 
 export function withDefaults(module: ModuleKey, config: unknown): Record<string, unknown> {

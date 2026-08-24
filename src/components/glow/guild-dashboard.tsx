@@ -10,6 +10,7 @@ import {
   Check,
   ChevronDown,
   CircleDot,
+  Command,
   Clock3,
   FileText,
   Hash,
@@ -222,6 +223,14 @@ export const MODULE_META: Record<ModuleKey, ModuleMeta> = {
     icon: Shield,
     group: "safety",
   },
+  customcommands: {
+    title: "الأوامر المخصصة",
+    en: "Custom Commands",
+    description: "أنشئ أوامر قصيرة يرد عليها Glow داخل السيرفر.",
+    enDescription: "Create short commands that Glow answers inside your server.",
+    icon: Command,
+    group: "community",
+  },
 };
 
 const SECTION_META: Record<"moderation" | "suggestion-review" | "leaderboard", ModuleMeta> = {
@@ -324,7 +333,7 @@ export function GuildDashboardLayout({
     },
     {
       label: t("المجتمع", "Community"),
-      items: ["suggestions", "autoreply", "autointeraction"] as ModuleKey[],
+      items: ["suggestions", "autoreply", "autointeraction", "customcommands"] as ModuleKey[],
     },
     {
       label: t("الأمان والإشراف", "Safety & moderation"),
@@ -418,7 +427,7 @@ export function GuildDashboardLayout({
           </div>
         </aside>
 
-        <main className="min-w-0 flex-1">
+        <main className="min-w-0 flex-1 animate-rise-in">
           <div className="mb-4 flex gap-2 overflow-x-auto rounded-2xl border border-border/50 bg-sidebar/80 p-2 lg:hidden">
             <SectionLink guildId={guildId} section="overview" icon={LayoutDashboard}>
               {t("الرئيسية", "Home")}
@@ -848,7 +857,8 @@ function ModulePage({
           ) : null}
           {(moduleKey === "autoreply" ||
             moduleKey === "autointeraction" ||
-            moduleKey === "tempvoice") && <ItemManager guildId={guildId} kind={moduleKey} />}
+            moduleKey === "tempvoice" ||
+            moduleKey === "customcommands") && <ItemManager guildId={guildId} kind={moduleKey} />}
         </aside>
       </div>
     </div>
@@ -936,7 +946,7 @@ function ItemManager({
   kind,
 }: {
   guildId: string;
-  kind: "autoreply" | "autointeraction" | "tempvoice";
+    kind: "autoreply" | "autointeraction" | "tempvoice" | "customcommands";
 }) {
   const { t } = useI18n();
   const qc = useQueryClient();
@@ -979,7 +989,9 @@ function ItemManager({
       ? t("ردود مخصصة", "Custom replies")
       : kind === "autointeraction"
         ? t("تفاعلات مخصصة", "Custom interactions")
-        : t("قوالب الرومات", "Voice templates");
+        : kind === "customcommands"
+          ? t("أوامر مخصصة", "Custom commands")
+          : t("قوالب الرومات", "Voice templates");
   return (
     <Card className="glow-panel p-5">
       <PanelTitle
@@ -999,7 +1011,9 @@ function ItemManager({
           placeholder={
             kind === "tempvoice"
               ? t("اسم القالب أو القناة", "Template or channel name")
-              : t("الكلمة أو العبارة", "Trigger phrase")
+              : kind === "customcommands"
+                ? t("اسم الأمر مثل rules", "Command name such as rules")
+                : t("الكلمة أو العبارة", "Trigger phrase")
           }
         />
         <Textarea

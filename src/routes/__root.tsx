@@ -79,14 +79,14 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Glow — Better Use Glow" },
+      { title: "Glow — Discord Community Control Center" },
       {
         name: "description",
-        content: "Glow: لوحة تحكم متكاملة لبوت Discord للحماية والأوتومود واللفلات والاقتراحات.",
+        content: "Glow is a focused Discord community control center for protection, engagement, moderation, leveling and automation.",
       },
       { name: "author", content: "Glow" },
-      { property: "og:title", content: "Glow — Better Use Glow" },
-      { property: "og:description", content: "إدارة سيرفر Discord من لوحة Glow المتوهجة." },
+      { property: "og:title", content: "Glow — Discord Community Control Center" },
+      { property: "og:description", content: "Run your Discord community with a calmer, clearer Glow control center." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
       { name: "twitter:site", content: "@Lovable" },
@@ -107,7 +107,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 
 function RootShell({ children }: { children: ReactNode }) {
   return (
-    <html lang="ar" dir="rtl">
+    <html lang="en" dir="ltr">
       <head>
         <HeadContent />
       </head>

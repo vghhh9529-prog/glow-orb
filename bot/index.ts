@@ -40,6 +40,7 @@ const client = new Client({
 });
 
 const messageCooldowns = new Map<string, number>();
+const customCommandCooldowns = new Map<string, number>();
 const voiceCreatedChannels = new Set<string>();
 
 function database() {
@@ -337,6 +338,48 @@ async function handleAutomations(message: Message) {
       const emoji = String(data.emoji ?? data.response ?? "").trim();
       if (trigger && emoji && message.content.toLowerCase().includes(trigger.toLowerCase())) {
         await message.react(emoji).catch(() => undefined);
+      }
+    }
+  }
+
+  const customCommands = await moduleConfig(message.guild.id, "customcommands");
+  if (customCommands.enabled && !(customCommands.config.ignoreBots && message.author.bot)) {
+    const prefix = String(customCommands.config.prefix ?? "!").trim() || "!";
+    const raw = message.content.trim();
+    if (raw.startsWith(prefix)) {
+      const commandName = raw.slice(prefix.length).trim().split(/\s+/)[0]?.toLowerCase() ?? "";
+      if (commandName) {
+        const items = await guildItems(message.guild.id, "customcommands");
+        const match = items.find((item) => {
+          const data = (item.data ?? {}) as Record<string, unknown>;
+          const trigger = String(data.trigger ?? item.name ?? "").trim().replace(/^!+/, "").toLowerCase();
+          return trigger === commandName;
+        });
+        if (match) {
+          const cooldownSeconds = Math.max(0, Number(customCommands.config.cooldownSeconds ?? 3));
+          const cooldownKey = `${message.guild.id}:${match.id ?? match.name}:${message.author.id}`;
+          const now = Date.now();
+          const lastUsed = customCommandCooldowns.get(cooldownKey) ?? 0;
+          if (now - lastUsed >= cooldownSeconds * 1000) {
+            customCommandCooldowns.set(cooldownKey, now);
+            const data = (match.data ?? {}) as Record<string, unknown>;
+            const response = String(data.response ?? data.reply ?? data.message ?? "").trim();
+            if (response) {
+              const member = message.member;
+              const rendered = member
+                ? replacePlaceholders(response, member)
+                : response
+                    .replaceAll("{user}", `<@${message.author.id}>`)
+                    .replaceAll("{username}", message.author.username)
+                    .replaceAll("{server}", message.guild.name);
+              await message.reply(rendered).catch((error: unknown) =>
+                console.error(`[Glow Bot] Custom command could not reply in ${message.guild?.id}`, error),
+              );
+            }
+            if (Boolean(customCommands.config.deleteTrigger) && message.deletable)
+              await message.delete().catch(() => undefined);
+          }
+        }
       }
     }
   }

@@ -10,6 +10,8 @@ const required = [
   "glow",
   "profile",
   "server",
+  "roles",
+  "ping",
   "user",
   "avatar",
   "help",
@@ -33,6 +35,8 @@ const body = (await response.json()) as { type?: number; data?: { content?: stri
 if (
   body.type !== 4 ||
   !body.data?.content?.includes("/server") ||
+  !body.data.content.includes("/roles") ||
+  !body.data.content.includes("/ping") ||
   !body.data.content.includes("/avatar")
 ) {
   throw new Error("/help smoke response is invalid");
