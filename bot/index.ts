@@ -957,10 +957,6 @@ async function handleMessageGuard(message: Message): Promise<boolean> {
   const config = settings.config;
   if (!settings.enabled || !config.channelId || config.channelId !== message.channelId) return false;
 
-  const deleted = await message.delete().then(() => true).catch((error: unknown) => {
-    console.error("Message Guard could not delete message", error);
-    return false;
-  });
   const member = message.member ?? (await message.guild.members.fetch(message.author.id).catch(() => null));
   if (!member || member.id === message.guild.ownerId) return true;
 
@@ -980,7 +976,12 @@ async function handleMessageGuard(message: Message): Promise<boolean> {
     });
   }
 
+  let deleted = false;
   if (punished) {
+    deleted = await message.delete().then(() => true).catch((error: unknown) => {
+      console.error("Message Guard could not delete message after punishment", error);
+      return false;
+    });
     await updateMessageGuardCounter(message.guild.id).catch((error: unknown) =>
       console.error("Message Guard counter update failed", error),
     );
@@ -993,7 +994,7 @@ async function handleMessageGuard(message: Message): Promise<boolean> {
     description: `${punished ? "A member was punished" : "A message was removed"} in <#${message.channelId}>.`,
     fields: [
       { name: "Member", value: `${message.author.tag} (${message.author.id})`, inline: true },
-      { name: "Action", value: punished ? config.punishment : deleted ? "message deleted" : "failed", inline: true },
+      { name: "Action", value: punished ? `${config.punishment}${deleted ? " + message deleted" : ""}` : "punishment failed; message kept", inline: true },
     ],
   }).catch((error: unknown) => console.error("Message Guard log failed", error));
   return true;
