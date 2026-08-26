@@ -19,6 +19,8 @@ type EvidenceRecord = StoredEvidence & { url: string };
 type ScamStatus = "pending" | "approved" | "rejected";
 
 type ScamReportData = {
+  sourceGuildId: string;
+  sourceGuildName: string;
   reporterId: string;
   reporterName: string | null;
   reportedUserId: string;
@@ -90,6 +92,8 @@ function readScamReportData(value: Json): ScamReportData | null {
     typeof record["createdAt"] !== "string"
   ) return null;
   return {
+    sourceGuildId: typeof record["sourceGuildId"] === "string" ? record["sourceGuildId"] : "",
+    sourceGuildName: typeof record["sourceGuildName"] === "string" ? record["sourceGuildName"] : "",
     reporterId: record["reporterId"],
     reporterName: typeof record["reporterName"] === "string" ? record["reporterName"] : null,
     reportedUserId: record["reportedUserId"],
@@ -234,6 +238,8 @@ export async function submitScamReport(input: { guildId: string; reportedUserId:
   const target = await fetchDiscordUser(input.reportedUserId);
   await ensureGuildRow(input.guildId, guild.name, guild.icon);
   const reportData: ScamReportData = {
+    sourceGuildId: input.guildId,
+    sourceGuildName: guild.name.slice(0, 100),
     reporterId: user.id,
     reporterName: user.global_name ?? user.username,
     reportedUserId: input.reportedUserId,
@@ -273,7 +279,7 @@ export async function submitScamReport(input: { guildId: string; reportedUserId:
 export async function listScammerDirectory(guildId: string, query = "") {
   await assertGuildAccess(guildId);
   const db = await database();
-  const { data, error } = await db.from("guild_items").select("id, name, data, created_at").eq("guild_id", guildId).eq("kind", SCAM_REPORT_KIND).order("created_at", { ascending: false }).limit(500);
+  const { data, error } = await db.from("guild_items").select("id, guild_id, name, data, created_at").eq("kind", SCAM_REPORT_KIND).order("created_at", { ascending: false }).limit(500);
   if (error) throw error;
   const normalized = query.trim().toLowerCase();
   const groups = new Map<string, { reportedUserId: string; username: string; avatar: string | null; reportCount: number; latestReportAt: string }>();
@@ -292,7 +298,7 @@ export async function listScammerReports(guildId: string, reportedUserId: string
   await assertGuildAccess(guildId);
   assertDiscordId(reportedUserId);
   const db = await database();
-  const { data, error } = await db.from("guild_items").select("id, data").eq("guild_id", guildId).eq("kind", SCAM_REPORT_KIND).order("created_at", { ascending: false }).limit(500);
+  const { data, error } = await db.from("guild_items").select("id, guild_id, data").eq("kind", SCAM_REPORT_KIND).order("created_at", { ascending: false }).limit(500);
   if (error) throw error;
   const rows = (data ?? []).map((item) => ({ id: item.id, report: readScamReportData(item.data) })).filter((item): item is { id: string; report: ScamReportData } => {
     const report = item.report;
@@ -308,6 +314,8 @@ export async function listScammerReports(guildId: string, reportedUserId: string
     description: report.description,
     evidence: storage ? (await Promise.all(report.evidence.map((item) => signEvidence(storage, item)))).filter((item): item is EvidenceRecord => Boolean(item)) : [],
     reporterName: report.reporterName,
+    sourceGuildId: report.sourceGuildId || "unknown",
+    sourceGuildName: report.sourceGuildName || "Unknown server",
     createdAt: report.createdAt,
     reviewedAt: report.reviewedAt,
     roleAssigned: report.roleAssigned,

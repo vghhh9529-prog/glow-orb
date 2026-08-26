@@ -158,6 +158,8 @@ export interface ScammerDirectoryEntry {
 
 export interface ScammerReport {
   id: string;
+  sourceGuildId: string;
+  sourceGuildName: string;
   reportedUserId: string;
   username: string;
   avatar: string | null;
@@ -379,8 +381,8 @@ const SECTION_META: Record<"moderation" | "suggestion-review" | "leaderboard" | 
   scammers: {
     title: "قائمة النصابين",
     en: "Scammer directory",
-    description: "راجع البلاغات المعتمدة وابحث عن الحسابات المبلغ عنها داخل السيرفر.",
-    enDescription: "Review approved reports and search reported accounts in this server.",
+    description: "راجع البلاغات المعتمدة وابحث في القائمة المركزية المشتركة بين جميع سيرفرات Glow.",
+    enDescription: "Review approved reports in the shared Glow-wide scammer directory.",
     icon: AlertTriangle,
     group: "safety",
   },
@@ -2180,7 +2182,7 @@ function ScammersPage({ guildId }: { guildId: string }) {
         </Card>
 
         <Card className="glow-panel p-5 sm:p-6">
-          <PanelTitle icon={Search} title={t("قائمة النصابين", "Scammer directory")} description={t("تظهر هنا الحسابات التي اعتمدتها الإدارة فقط.", "Only administrator-approved accounts appear here.")} action={<Button variant="outline" size="icon" onClick={() => directory.refetch()} aria-label={t("تحديث", "Refresh")}><RefreshCw className={`size-4 ${directory.isFetching ? "animate-spin" : ""}`} /></Button>} />
+          <PanelTitle icon={Search} title={t("قائمة النصابين", "Scammer directory")} description={t("هذه قائمة مركزية مشتركة؛ تظهر فيها الحسابات التي اعتمدتها الإدارة في جميع السيرفرات.", "This is a shared central directory of accounts approved by administrators across all servers.")} action={<Button variant="outline" size="icon" onClick={() => directory.refetch()} aria-label={t("تحديث", "Refresh")}><RefreshCw className={`size-4 ${directory.isFetching ? "animate-spin" : ""}`} /></Button>} />
           <div className="relative mt-5">
             <Search className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t("ابحث بالاسم أو Discord ID…", "Search name or Discord ID…")} className="ps-9" />
@@ -2220,6 +2222,7 @@ function ScammersPage({ guildId }: { guildId: string }) {
                 <div className="flex flex-wrap items-center justify-between gap-3"><Badge className="bg-success/15 text-success hover:bg-success/15">{t("بلاغ معتمد", "Approved report")}</Badge><span className="text-xs text-muted-foreground">{formatDate(currentReport.createdAt)}</span></div>
                 <p className="mt-4 whitespace-pre-wrap text-sm leading-7 text-foreground/85">{currentReport.description}</p>
                 <p className="mt-4 text-xs text-muted-foreground">{t("مقدم البلاغ", "Reported by")}: {currentReport.reporterName ?? t("عضو", "Member")}</p>
+                <p className="mt-2 text-xs text-muted-foreground">{t("السيرفر المصدر", "Source server")}: {currentReport.sourceGuildName}</p>
                 {currentReport.roleAssigned ? <p className="mt-2 text-xs text-success">{t("تمت إضافة رول النصاب عند الاعتماد.", "Scammer role was assigned on approval.")}</p> : currentReport.roleAssignmentError && <p className="mt-2 text-xs text-warning">{currentReport.roleAssignmentError}</p>}
               </div>
               <div className="grid grid-cols-2 gap-3">
