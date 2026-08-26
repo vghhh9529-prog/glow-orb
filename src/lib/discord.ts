@@ -51,6 +51,7 @@ export const MODULE_KEYS = [
   "autoreply",
   "autointeraction",
   "automod",
+  "messageguard",
   "protection",
   "logging",
   "customcommands",

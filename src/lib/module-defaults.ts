@@ -112,6 +112,14 @@ export const MODULE_DEFAULTS: Record<ModuleKey, Record<string, unknown>> = {
       emojiSpam: { enabled: false, limit: 8, action: "block" },
     },
   },
+  messageguard: {
+    channelId: "",
+    channelName: "mrbeast-guard",
+    categoryId: "",
+    punishment: "kick",
+    punishmentCount: 0,
+    messageId: "",
+  },
   protection: {
     logChannelId: "",
     whitelist: [] as string[],

@@ -80,6 +80,23 @@ export const publishTicketPanel = createServerFn({ method: "POST" })
     return publish(data.guildId);
   });
 
+export const provisionMessageGuard = createServerFn({ method: "POST" })
+  .inputValidator(
+    (data) =>
+      z
+        .object({
+          guildId: discordId,
+          channelName: z.string().trim().min(1).max(90),
+          categoryId: discordId.or(z.literal("")),
+          punishment: z.enum(["kick", "ban"]),
+        })
+        .parse(data),
+  )
+  .handler(async ({ data }) => {
+    const { provisionMessageGuard: provision } = await import("./message-guard.server");
+    return provision(data);
+  });
+
 export const getItems = createServerFn({ method: "GET" })
   .inputValidator((data) => z.object({ guildId: discordId, kind: itemKind }).parse(data))
   .handler(async ({ data }) => {

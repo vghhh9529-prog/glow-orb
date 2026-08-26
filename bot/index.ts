@@ -41,6 +41,11 @@ import {
   roleIds,
 } from "../src/lib/discord-runtime.server";
 import { type ModuleKey } from "../src/lib/discord";
+import {
+  getMessageGuardSettings,
+  isMessageGuardCounterButton,
+  updateMessageGuardCounter,
+} from "../src/lib/message-guard.server";
 import { SLASH_COMMANDS } from "../src/lib/slash-commands";
 
 const SITE_URL = (
@@ -62,6 +67,10 @@ const client = new Client({
 const messageCooldowns = new Map<string, number>();
 const customCommandCooldowns = new Map<string, number>();
 const voiceCreatedChannels = new Set<string>();
+const messageGuardCache = new Map<
+  string,
+  { expiresAt: number; settings: Awaited<ReturnType<typeof getMessageGuardSettings>> }
+>();
 
 const GLOW_CHANNELS = {
   status: "1541166366160060468",
@@ -934,6 +943,62 @@ async function handleFixedCommunityChannels(message: Message) {
   }
 }
 
+async function cachedMessageGuardSettings(guildId: string) {
+  const cached = messageGuardCache.get(guildId);
+  if (cached && cached.expiresAt > Date.now()) return cached.settings;
+  const settings = await getMessageGuardSettings(guildId);
+  messageGuardCache.set(guildId, { settings, expiresAt: Date.now() + 30_000 });
+  return settings;
+}
+
+async function handleMessageGuard(message: Message): Promise<boolean> {
+  if (!message.guild || message.author.bot) return false;
+  const settings = await cachedMessageGuardSettings(message.guild.id);
+  const config = settings.config;
+  if (!settings.enabled || !config.channelId || config.channelId !== message.channelId) return false;
+
+  const deleted = await message.delete().then(() => true).catch((error: unknown) => {
+    console.error("Message Guard could not delete message", error);
+    return false;
+  });
+  const member = message.member ?? (await message.guild.members.fetch(message.author.id).catch(() => null));
+  if (!member || member.id === message.guild.ownerId) return true;
+
+  const reason = "Glow Message Guard: message sent in a protected room";
+  let punished = false;
+  if (config.punishment === "ban") {
+    if (member.bannable) {
+      punished = await member.ban({ reason }).then(() => true).catch((error: unknown) => {
+        console.error("Message Guard ban failed", error);
+        return false;
+      });
+    }
+  } else if (member.kickable) {
+    punished = await member.kick(reason).then(() => true).catch((error: unknown) => {
+      console.error("Message Guard kick failed", error);
+      return false;
+    });
+  }
+
+  if (punished) {
+    await updateMessageGuardCounter(message.guild.id).catch((error: unknown) =>
+      console.error("Message Guard counter update failed", error),
+    );
+    messageGuardCache.delete(message.guild.id);
+  }
+  await logGuildEvent({
+    guild: message.guild,
+    event: "moderation",
+    title: "Message Guard enforcement",
+    description: `${punished ? "A member was punished" : "A message was removed"} in <#${message.channelId}>.`,
+    fields: [
+      { name: "Member", value: `${message.author.tag} (${message.author.id})`, inline: true },
+      { name: "Action", value: punished ? config.punishment : deleted ? "message deleted" : "failed", inline: true },
+    ],
+  }).catch((error: unknown) => console.error("Message Guard log failed", error));
+  return true;
+}
+
 let shuttingDown = false;
 
 async function shutdownBot() {
@@ -958,6 +1023,13 @@ client.once(Events.ClientReady, async (readyClient) => {
 });
 
 client.on(Events.InteractionCreate, async (interaction) => {
+  if (interaction.isButton() && isMessageGuardCounterButton(interaction.customId)) {
+    await interaction.reply({
+      content: "This counter is informational only. No action is taken when you press it.",
+      ephemeral: true,
+    });
+    return;
+  }
   if (interaction.isModalSubmit() && interaction.customId === "glow_ticket_open_modal") {
     await createTicketFromModal(interaction).catch((error: unknown) => {
       console.error("[Glow Bot] Ticket modal failed", error);
@@ -1251,6 +1323,11 @@ client.on(Events.MessageCreate, async (message) => {
       `[Glow Bot] MessageCreate guild=${message.guild.id} channel=${message.channelId} authorBot=${message.author.bot} contentLength=${contentLength}`,
     );
   }
+  const guarded = await handleMessageGuard(message).catch((error: unknown) => {
+    console.error("Message Guard failed", error);
+    return false;
+  });
+  if (guarded) return;
   await handleFixedCommunityChannels(message).catch((error: unknown) =>
     console.error("Fixed community channel action failed", error),
   );
@@ -1261,6 +1338,21 @@ client.on(Events.MessageCreate, async (message) => {
     console.error("Automation failed", error),
   );
   await handleLeveling(message).catch((error: unknown) => console.error("Leveling failed", error));
+});
+
+client.on(Events.MessageReactionAdd, async (reaction, user) => {
+  if (user.bot) return;
+  const guildId = reaction.message.guildId;
+  if (!guildId) return;
+  const settings = await cachedMessageGuardSettings(guildId).catch((error: unknown) => {
+    console.error("Message Guard reaction check failed", error);
+    return null;
+  });
+  if (!settings?.enabled || settings.config.channelId !== reaction.message.channelId) return;
+  if (reaction.partial) await reaction.fetch().catch(() => undefined);
+  await reaction.users.remove(user.id).catch((error: unknown) =>
+    console.error("Message Guard reaction removal failed", error),
+  );
 });
 
 client.on(Events.VoiceStateUpdate, async (oldState, newState) => {

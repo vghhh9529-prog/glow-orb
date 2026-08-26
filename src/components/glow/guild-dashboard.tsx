@@ -18,6 +18,7 @@ import {
   LayoutDashboard,
   ListChecks,
   MessageCircleMore,
+  MessageSquareOff,
   Mic2,
   Plus,
   RefreshCw,
@@ -47,6 +48,7 @@ import {
   getSuggestions,
   removeItem,
   publishTicketPanel,
+  provisionMessageGuard,
   revokeModerationCase,
   saveItem,
   saveModule,
@@ -249,6 +251,14 @@ export const MODULE_META: Record<ModuleKey, ModuleMeta> = {
     icon: Zap,
     group: "community",
   },
+  messageguard: {
+    title: "حارس الرسائل",
+    en: "Message Guard",
+    description: "أنشئ رومًا يمنع الرسائل والرياكتات مع تطبيق طرد أو باند تلقائي.",
+    enDescription: "Create a protected room that blocks messages and reactions with automatic kick or ban enforcement.",
+    icon: MessageSquareOff,
+    group: "safety",
+  },
   automod: {
     title: "الأوتومود",
     en: "AutoMod",
@@ -407,7 +417,7 @@ export function GuildDashboardLayout({
     },
     {
       label: t("الأمان والإشراف", "Safety & moderation"),
-      items: ["automod", "protection", "logging"] as ModuleKey[],
+      items: ["automod", "messageguard", "protection", "logging"] as ModuleKey[],
     },
   ];
 
@@ -814,6 +824,8 @@ export function GuildSectionPage({
     return <CommandsModulePage guildId={guildId} workspace={workspace} />;
   if (normalized === "tickets")
     return <TicketsPage guildId={guildId} workspace={workspace} />;
+  if (normalized === "messageguard")
+    return <MessageGuardPage guildId={guildId} workspace={workspace} />;
   if (isModuleKey(normalized))
     return <ModulePage guildId={guildId} moduleKey={normalized} workspace={workspace} />;
   if (normalized === "moderation") return <ModerationPage guildId={guildId} />;
@@ -1061,6 +1073,170 @@ function CommandsModulePage({
         </div>
         {filtered.length === 0 && <p className="py-12 text-center text-sm text-muted-foreground">{t("لا توجد أوامر مطابقة.", "No matching commands.")}</p>}
       </Card>
+    </div>
+  );
+}
+
+function MessageGuardPage({
+  guildId,
+  workspace,
+}: {
+  guildId: string;
+  workspace: GuildWorkspace;
+}) {
+  const { t } = useI18n();
+  const qc = useQueryClient();
+  const current = workspace.modules?.["messageguard"];
+  const currentConfig = current?.config ?? MODULE_DEFAULTS.messageguard;
+  const [enabled, setEnabled] = useState(Boolean(current?.enabled));
+  const [channelName, setChannelName] = useState(String(currentConfig["channelName"] ?? "mrbeast-guard"));
+  const [categoryId, setCategoryId] = useState(String(currentConfig["categoryId"] ?? ""));
+  const [punishment, setPunishment] = useState<"kick" | "ban">(
+    currentConfig["punishment"] === "ban" ? "ban" : "kick",
+  );
+  const hydrated = useRef(false);
+  const categories = (workspace.channels ?? []).filter((channel) => channel.type === 4);
+  const configuredChannelId = String(currentConfig["channelId"] ?? "");
+  const punishmentCount = Math.max(0, Number(currentConfig["punishmentCount"] ?? 0) || 0);
+
+  useEffect(() => {
+    hydrated.current = false;
+    setEnabled(Boolean(current?.enabled));
+    setChannelName(String(currentConfig["channelName"] ?? "mrbeast-guard"));
+    setCategoryId(String(currentConfig["categoryId"] ?? ""));
+    setPunishment(currentConfig["punishment"] === "ban" ? "ban" : "kick");
+    const timer = window.setTimeout(() => {
+      hydrated.current = true;
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [current]);
+
+  const save = useMutation({
+    mutationFn: async () => {
+      if (!enabled) {
+        return saveModule({
+          data: {
+            guildId,
+            module: "messageguard",
+            enabled: false,
+            config: {
+              ...currentConfig,
+              channelName,
+              categoryId,
+              punishment,
+            },
+          },
+        });
+      }
+      return provisionMessageGuard({ data: { guildId, channelName, categoryId, punishment } });
+    },
+    onSuccess: () => {
+      toast.success(t("تم إنشاء وحفظ حارس الرسائل", "Message Guard was created and saved"));
+      qc.invalidateQueries({ queryKey: ["workspace", guildId] });
+      qc.invalidateQueries({ queryKey: ["overview", guildId] });
+    },
+    onError: (error: unknown) => {
+      const message = error instanceof Error ? error.message : "";
+      if (message.includes("INVALID_CATEGORY")) {
+        toast.error(t("الكاتجوري غير موجودة أو ليست كاتجوري في هذا السيرفر", "That category is no longer available in this server"));
+      } else if (message.includes("BOT_NOT_IN_GUILD")) {
+        toast.error(t("أضف البوت إلى السيرفر أولاً", "Invite Glow to this server first"));
+      } else {
+        toast.error(t("تعذر إنشاء الروم. تأكد من صلاحيات البوت", "Could not create the room. Check the bot permissions"));
+      }
+    },
+  });
+
+  return (
+    <div className="space-y-6">
+      <SectionHero
+        icon={MessageSquareOff}
+        title={t("حارس رسائل MrBeast", "MrBeast Message Guard")}
+        description={t(
+          "أنشئ رومًا خاصًا لمنع رسائل MrBeast أو أي محتوى تختاره، مع حذف الرسالة وتطبيق طرد أو باند تلقائيًا.",
+          "Create a protected room for MrBeast messages or any content you choose, deleting messages and applying an automatic kick or ban.",
+        )}
+        enabled={enabled}
+        onEnabledChange={setEnabled}
+      />
+
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
+        <Card className="glow-panel overflow-hidden p-5 sm:p-6">
+          <div className="flex flex-col gap-4 border-b border-border/50 pb-5 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.2em] text-primary">{t("إنشاء وحفظ", "Create & save")}</p>
+              <h2 className="mt-2 text-xl font-bold text-foreground">{t("إعداد الروم المحمي", "Protected room setup")}</h2>
+              <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                {t("اختر الاسم والكاتجوري والعقوبة، ثم اضغط إنشاء وحفظ ليتم إنشاء الروم داخل Discord.", "Choose the name, category and punishment, then create and save the room inside Discord.")}
+              </p>
+            </div>
+            <Button onClick={() => save.mutate()} disabled={save.isPending} className="shrink-0 gap-2">
+              {save.isPending ? <RefreshCw className="size-4 animate-spin" /> : <Save className="size-4" />}
+              {save.isPending ? t("جاري الإنشاء…", "Creating…") : t("إنشاء وحفظ", "Create & save")}
+            </Button>
+          </div>
+
+          <div className="mt-5 grid gap-4 md:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold text-muted-foreground">{t("اسم الروم", "Room name")}</Label>
+              <Input value={channelName} onChange={(event) => setChannelName(event.target.value)} maxLength={90} placeholder="mrbeast-guard" />
+              <p className="text-[11px] leading-5 text-muted-foreground">{t("سيُنظّف الاسم تلقائيًا إلى صيغة مناسبة لرومات Discord.", "The name is normalized into a Discord-safe channel name.")}</p>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold text-muted-foreground">{t("الكاتجوري", "Category")}</Label>
+              <Select value={categoryId || "__none"} onValueChange={(value) => setCategoryId(value === "__none" ? "" : value)}>
+                <SelectTrigger><SelectValue placeholder={t("اختر الكاتجوري", "Choose a category")} /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none">{t("بدون كاتجوري", "No category")}</SelectItem>
+                  {categories.map((category) => <SelectItem key={category.id} value={category.id}>📁 {category.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <p className="text-[11px] leading-5 text-muted-foreground">{categories.length === 0 ? t("لم توجد كاتجوريات متاحة في هذا السيرفر.", "No categories were found in this server.") : t("تظهر هنا الكاتجوريات فقط، وليس الرومات العادية.", "Only categories from this server appear here.")}</p>
+            </div>
+            <div className="space-y-1.5 md:col-span-2">
+              <Label className="text-xs font-semibold text-muted-foreground">{t("الإجراء عند إرسال رسالة", "Action when a message is sent")}</Label>
+              <Select value={punishment} onValueChange={(value) => setPunishment(value === "ban" ? "ban" : "kick")}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="kick">👢 {t("طرد العضو مباشرة", "Kick the member immediately")}</SelectItem>
+                  <SelectItem value="ban">🔨 {t("حظر العضو مباشرة", "Ban the member immediately")}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="mt-6 rounded-2xl border border-amber-400/20 bg-amber-400/5 p-4 text-sm leading-6 text-muted-foreground">
+            <p className="font-semibold text-foreground">{t("كيف يعمل النظام؟", "How it works")}</p>
+            <p className="mt-1">{t("الروم يبقى مفتوحًا للجميع، لكن أي رسالة تُحذف فورًا وتُطبق العقوبة المحددة. أما الرياكتات فتُحذف تلقائيًا ولا يستطيع الأعضاء الاحتفاظ بها.", "The room stays visible to everyone, but every message is deleted immediately and the selected punishment is applied. Reactions are also removed automatically.")}</p>
+          </div>
+
+          <div className="mt-5 rounded-2xl border border-border/60 bg-background/20 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2"><span className={`size-2.5 rounded-full ${configuredChannelId ? "bg-success" : "bg-muted-foreground"}`} /><span className="text-sm font-semibold text-foreground">{configuredChannelId ? t("الروم متصل ومحفوظ", "Room connected and saved") : t("لم يتم إنشاء روم بعد", "No room created yet")}</span></div>
+              <Badge variant="secondary">{t(`${punishmentCount} عقوبة`, `${punishmentCount} penalties`)}</Badge>
+            </div>
+            {configuredChannelId && <p className="mt-2 text-xs text-muted-foreground">{t("سيستمر الإعداد بعد إعادة تشغيل البوت لأنه محفوظ في قاعدة البيانات.", "The setup survives bot restarts because it is stored in the database.")}</p>}
+          </div>
+        </Card>
+
+        <aside className="space-y-5">
+          <Card className="glow-panel overflow-hidden p-0">
+            <img src="/message-guard-reference.png" alt={t("صورة نظام حارس الرسائل", "Message Guard visual")} className="aspect-[16/10] w-full object-cover opacity-80" />
+            <div className="p-5">
+              <PanelTitle icon={MessageSquareOff} title={t("واجهة النظام", "System visual")} />
+              <p className="mt-3 text-sm leading-6 text-muted-foreground">{t("سيضع البوت رسالة Embed عربية وإنجليزية داخل الروم، وبداخلها عدد الأشخاص الذين عوقبوا.", "Glow posts a bilingual Arabic and English embed inside the room with the number of punished members.")}</p>
+            </div>
+          </Card>
+          <Card className="glow-panel border-primary/20 bg-primary/5 p-5">
+            <PanelTitle icon={Shield} title={t("صلاحيات مطلوبة", "Required permissions")} />
+            <div className="mt-4 space-y-2 text-sm leading-6 text-muted-foreground">
+              <p>✅ {t("إدارة الرومات لإنشاء الروم ونقله", "Manage Channels to create and move the room")}</p>
+              <p>✅ {t("إدارة الرسائل لحذف الرسائل والرياكتات", "Manage Messages to remove messages and reactions")}</p>
+              <p>✅ {t("طرد الأعضاء أو حظرهم حسب اختيارك", "Kick Members or Ban Members based on your choice")}</p>
+            </div>
+          </Card>
+        </aside>
+      </div>
     </div>
   );
 }
