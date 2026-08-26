@@ -57,8 +57,8 @@ const names = SLASH_COMMANDS.map((command) => command.name);
 if (names.length !== required.length) {
   throw new Error(`Expected ${required.length} slash commands, found ${names.length}`);
 }
-if (COMMAND_CATALOG.length !== 87) {
-  throw new Error(`Expected 87 catalog entries, found ${COMMAND_CATALOG.length}`);
+if (COMMAND_CATALOG.length !== 86) {
+  throw new Error(`Expected 86 catalog entries, found ${COMMAND_CATALOG.length}`);
 }
 const liveCatalog = COMMAND_CATALOG.filter((command) => command.supported).map((command) => command.name);
 if (liveCatalog.length !== names.length || names.some((name) => !liveCatalog.includes(name))) {

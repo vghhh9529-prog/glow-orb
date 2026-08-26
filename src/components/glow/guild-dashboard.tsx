@@ -169,7 +169,6 @@ const COMMAND_ENGLISH: Record<string, string> = {
   suggestion: "Review a suggestion",
   title: "View or change your profile title",
   translate: "Translate a message or phrase",
-  vito: "View a Vito balance",
   avatar: "View a member avatar",
   banner: "View a member banner",
   invites: "View invite information",

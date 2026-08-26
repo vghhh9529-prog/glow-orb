@@ -25,7 +25,6 @@ export const COMMAND_CATALOG: CommandDefinition[] = [
   { name: "suggestion", category: "general", description: "إدارة اقتراح (موافقة، رفض، أو تنفيذ)", supported: false },
   { name: "title", category: "general", description: "عرض أو تغيير عنوان بروفايلك", supported: false },
   { name: "translate", category: "general", description: "ترجمة رسالة أو نص إلى لغة محددة.", supported: false },
-  { name: "vito", category: "general", description: "عرض رصيد Vito الخاص بك أو بشخص آخر", supported: false },
   { name: "avatar", category: "info", description: "احصل على صورة مستخدم أو على صورتك", supported: true },
   { name: "banner", category: "info", description: "احصل على بانر مستخدم أو على بانرك", supported: true },
   { name: "invites", category: "info", description: "عرض معلومات دعواتك أو دعوات مستخدم آخر.", supported: true },
