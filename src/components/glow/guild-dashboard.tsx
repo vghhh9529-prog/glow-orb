@@ -433,7 +433,7 @@ function SectionLink({
     <Link
       to={section === "overview" ? "/dashboard/$guildId" : "/dashboard/$guildId/$section"}
       params={section === "overview" ? { guildId } : { guildId, section }}
-      className={`group relative flex items-center gap-3 overflow-hidden rounded-xl border px-3 py-2.5 text-sm transition-[transform,background-color,border-color,box-shadow,color] duration-200 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
+      className={`group relative flex shrink-0 snap-start items-center gap-3 overflow-hidden rounded-xl border px-2.5 py-2.5 text-sm transition-[transform,background-color,border-color,box-shadow,color] duration-200 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background sm:px-3 lg:w-full ${
         active
           ? "border-primary/25 bg-gradient-to-r from-primary/20 via-primary/10 to-accent/5 text-foreground shadow-[0_10px_24px_-18px_hsl(var(--primary)/0.95),inset_0_0_0_1px_hsl(var(--primary)/0.16)] before:absolute before:inset-y-2 before:start-0 before:w-0.5 before:rounded-full before:bg-gradient-to-b before:from-primary before:to-accent"
           : "border-transparent text-muted-foreground hover:-translate-y-0.5 hover:border-primary/15 hover:bg-sidebar-accent/80 hover:text-foreground hover:shadow-[0_10px_24px_-18px_hsl(var(--primary)/0.8)]"
@@ -443,7 +443,7 @@ function SectionLink({
       <span className={`relative z-10 flex size-8 shrink-0 items-center justify-center rounded-lg transition-[background-color,box-shadow,color,transform] duration-200 ${active ? "bg-primary/15 text-primary shadow-[0_0_18px_-6px_hsl(var(--primary))]" : "bg-background/20 text-muted-foreground group-hover:scale-105 group-hover:bg-primary/10 group-hover:text-primary"}`}>
         <Icon className="size-4" />
       </span>
-      <span className="relative z-10 truncate font-semibold">{children}</span>
+      <span className="relative z-10 min-w-0 flex-1 truncate font-semibold">{children}</span>
       <span className="sr-only">{href}</span>
     </Link>
   );
@@ -483,7 +483,7 @@ export function GuildDashboardLayout({
   ];
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen overflow-x-clip bg-background">
       <TopBar
         right={
           <Button
@@ -497,7 +497,7 @@ export function GuildDashboardLayout({
           </Button>
         }
       />
-      <div dir="ltr" className="mx-auto flex w-full max-w-[1440px] flex-row-reverse gap-4 px-3 py-4 sm:px-5 lg:gap-6 lg:px-6">
+      <div dir="ltr" className="dashboard-shell mx-auto flex w-full max-w-[1440px] flex-row-reverse gap-3 px-3 py-3 sm:gap-4 sm:px-5 sm:py-4 lg:gap-6 lg:px-6">
         <aside dir={dir} className="hidden w-64 shrink-0 lg:block">
           <div className="sticky top-20 space-y-4">
             <Card className="glow-panel overflow-hidden p-3">
@@ -571,8 +571,8 @@ export function GuildDashboardLayout({
           </div>
         </aside>
 
-        <main dir={dir} className="min-w-0 flex-1 animate-rise-in">
-          <div className="dashboard-nav-scroll mb-4 flex gap-2 overflow-x-auto rounded-2xl border border-primary/15 bg-gradient-to-r from-sidebar/95 via-sidebar/80 to-primary/5 p-2 shadow-[0_16px_36px_-24px_hsl(var(--primary)/0.9)] lg:hidden">
+        <main dir={dir} className="dashboard-main min-w-0 flex-1 animate-rise-in">
+          <div className="dashboard-nav-scroll mb-4 flex snap-x gap-2 overflow-x-auto rounded-2xl border border-primary/15 bg-gradient-to-r from-sidebar/95 via-sidebar/80 to-primary/5 p-2 shadow-[0_16px_36px_-24px_hsl(var(--primary)/0.9)] lg:hidden">
             <SectionLink guildId={guildId} section="overview" icon={LayoutDashboard}>
               {t("الرئيسية", "Home")}
             </SectionLink>
@@ -633,16 +633,16 @@ function PanelTitle({
 }) {
   return (
     <div className="flex flex-wrap items-start justify-between gap-3">
-      <div className="flex items-start gap-3">
-        <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+      <div className="flex min-w-0 items-start gap-3">
+        <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary sm:size-10">
           <Icon className="size-5" />
         </span>
-        <div>
-          <h2 className="font-bold text-foreground">{title}</h2>
-          {description && <p className="mt-1 text-sm text-muted-foreground">{description}</p>}
+        <div className="min-w-0 flex-1">
+          <h2 className="truncate font-bold text-foreground">{title}</h2>
+          {description && <p className="mt-1 max-w-full text-sm leading-6 text-muted-foreground">{description}</p>}
         </div>
       </div>
-      {action}
+      {action && <div className="max-w-full shrink-0">{action}</div>}
     </div>
   );
 }
@@ -1524,20 +1524,20 @@ function SectionHero({
 }) {
   const { t } = useI18n();
   return (
-    <section className="rounded-3xl border border-primary/25 bg-gradient-to-br from-primary/12 via-card/70 to-card/35 p-6 sm:p-7">
+    <section className="rounded-3xl border border-primary/25 bg-gradient-to-br from-primary/12 via-card/70 to-card/35 p-4 sm:p-7">
       <div className="flex flex-col justify-between gap-5 md:flex-row md:items-center">
-        <div className="flex items-start gap-4">
-          <span className="flex size-14 shrink-0 items-center justify-center rounded-2xl bg-primary/15 text-primary shadow-[0_0_35px_hsl(var(--primary)/0.28)]">
-            <Icon className="size-7" />
+        <div className="flex min-w-0 items-start gap-3 sm:gap-4">
+          <span className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-primary/15 text-primary shadow-[0_0_35px_hsl(var(--primary)/0.28)] sm:size-14">
+            <Icon className="size-6 sm:size-7" />
           </span>
-          <div>
+          <div className="min-w-0 flex-1">
             <p className="text-xs font-bold uppercase tracking-[0.2em] text-primary">Glow module</p>
-            <h1 className="mt-2 text-2xl font-black text-foreground sm:text-3xl">{title}</h1>
+            <h1 className="mt-2 text-xl font-black leading-tight text-foreground sm:text-3xl">{title}</h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">{description}</p>
           </div>
         </div>
         {typeof enabled === "boolean" && onEnabledChange && (
-          <div className="flex items-center gap-3 rounded-2xl border border-border/60 bg-background/25 px-4 py-3">
+          <div className="flex w-full items-center justify-between gap-3 rounded-2xl border border-border/60 bg-background/25 px-3 py-3 sm:w-auto sm:justify-start sm:px-4">
             <div className="text-end">
               <p className="text-sm font-semibold text-foreground">
                 {t("تفعيل النظام", "Enable module")}
@@ -2122,8 +2122,8 @@ function ScammersPage({ guildId }: { guildId: string }) {
   return (
     <div className="space-y-6">
       <SectionHero icon={meta.icon} title={t(meta.title, meta.en)} description={t(meta.description, meta.enDescription)} />
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.05fr)_minmax(360px,0.95fr)]">
-        <Card className="glow-panel relative overflow-hidden p-5 sm:p-6">
+      <div className="grid min-w-0 gap-4 sm:gap-6 xl:grid-cols-[minmax(0,1.05fr)_minmax(360px,0.95fr)]">
+        <Card className="glow-panel relative min-w-0 overflow-hidden p-4 sm:p-6">
           <div className="pointer-events-none absolute -end-20 -top-24 size-64 rounded-full bg-destructive/10 blur-3xl" />
           <PanelTitle
             icon={AlertTriangle}
@@ -2181,7 +2181,7 @@ function ScammersPage({ guildId }: { guildId: string }) {
           </div>
         </Card>
 
-        <Card className="glow-panel p-5 sm:p-6">
+        <Card className="glow-panel min-w-0 p-4 sm:p-6">
           <PanelTitle icon={Search} title={t("قائمة النصابين", "Scammer directory")} description={t("هذه قائمة مركزية مشتركة؛ تظهر فيها الحسابات التي اعتمدتها الإدارة في جميع السيرفرات.", "This is a shared central directory of accounts approved by administrators across all servers.")} action={<Button variant="outline" size="icon" onClick={() => directory.refetch()} aria-label={t("تحديث", "Refresh")}><RefreshCw className={`size-4 ${directory.isFetching ? "animate-spin" : ""}`} /></Button>} />
           <div className="relative mt-5">
             <Search className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -2190,11 +2190,11 @@ function ScammersPage({ guildId }: { guildId: string }) {
           <div className="mt-4 space-y-2">
             {directory.isLoading && <Skeleton className="h-24" />}
             {(directory.data ?? []).map((item) => (
-              <div key={item.reportedUserId} className={`flex items-center gap-3 rounded-2xl border p-3 text-start transition hover:-translate-y-0.5 hover:border-primary/40 hover:bg-primary/5 ${selectedUserId === item.reportedUserId ? "border-primary/50 bg-primary/10" : "border-border/50 bg-background/20"}`}>
-                {item.avatar ? <img src={item.avatar} alt="" className="size-11 rounded-full border border-primary/25 object-cover" /> : <span className="flex size-11 items-center justify-center rounded-full bg-primary/15 font-bold text-primary">{item.username.slice(0, 1).toUpperCase()}</span>}
-                <span className="min-w-0 flex-1"><span className="block truncate text-sm font-bold text-foreground">{item.username}</span><span className="mt-1 block truncate font-mono text-[11px] text-muted-foreground">{item.reportedUserId}</span></span>
+              <div key={item.reportedUserId} className={`flex flex-wrap items-center gap-2.5 rounded-2xl border p-3 text-start transition hover:-translate-y-0.5 hover:border-primary/40 hover:bg-primary/5 sm:gap-3 ${selectedUserId === item.reportedUserId ? "border-primary/50 bg-primary/10" : "border-border/50 bg-background/20"}`}>
+                {item.avatar ? <img src={item.avatar} alt="" className="size-10 shrink-0 rounded-full border border-primary/25 object-cover sm:size-11" /> : <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/15 font-bold text-primary sm:size-11">{item.username.slice(0, 1).toUpperCase()}</span>}
+                <span className="min-w-[8rem] flex-1"><span className="block truncate text-sm font-bold text-foreground">{item.username}</span><span className="mt-1 block truncate font-mono text-[11px] text-muted-foreground">{item.reportedUserId}</span></span>
                 <span className="shrink-0 rounded-lg bg-destructive/10 px-2 py-1 text-xs font-bold text-destructive">{item.reportCount} {t("بلاغ", "reports")}</span>
-                <Button type="button" variant="outline" size="sm" onClick={() => setSelectedUserId(item.reportedUserId)} className="shrink-0 gap-1.5">
+                <Button type="button" variant="outline" size="sm" onClick={() => setSelectedUserId(item.reportedUserId)} className="w-full shrink-0 gap-1.5 sm:w-auto">
                   <FileText className="size-3.5" />
                   {t("عرض النصاب", "View scammer")}
                 </Button>
@@ -2283,8 +2283,9 @@ function LeaderboardPage({ guildId }: { guildId: string }) {
             </div>
           }
         />
-        <div className="mt-5 overflow-hidden rounded-2xl border border-border/50">
-          <div className="grid grid-cols-[48px_minmax(0,1fr)_100px_80px] gap-3 bg-background/30 px-4 py-3 text-xs font-bold text-muted-foreground">
+        <div className="dashboard-table-scroll mt-5 rounded-2xl border border-border/50">
+          <div className="min-w-[360px] overflow-hidden rounded-2xl">
+            <div className="grid grid-cols-[48px_minmax(0,1fr)_100px_80px] gap-3 bg-background/30 px-4 py-3 text-xs font-bold text-muted-foreground">
             <span>#</span>
             <span>{t("العضو", "Member")}</span>
             <span>XP</span>
@@ -2318,9 +2319,10 @@ function LeaderboardPage({ guildId }: { guildId: string }) {
               <span className="text-sm text-muted-foreground">{String(row.level ?? 0)}</span>
             </div>
           ))}
-          {!board.isLoading && (board.data ?? []).length === 0 && (
-            <EmptyState icon={Trophy} title={t("لا توجد بيانات XP بعد", "No XP data yet")} />
-          )}
+            {!board.isLoading && (board.data ?? []).length === 0 && (
+              <EmptyState icon={Trophy} title={t("لا توجد بيانات XP بعد", "No XP data yet")} />
+            )}
+          </div>
         </div>
       </Card>
     </div>

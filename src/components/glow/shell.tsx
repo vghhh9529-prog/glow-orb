@@ -8,7 +8,7 @@ import { Globe } from "lucide-react";
 
 export function GlowMark({ size = 36 }: { size?: number }) {
   return (
-    <span className="flex items-center gap-2">
+    <span className="flex min-w-0 items-center gap-2">
       <img
         src={logo}
         alt="Glow"
@@ -16,7 +16,7 @@ export function GlowMark({ size = 36 }: { size?: number }) {
         height={size}
         className="rounded-xl object-cover shadow-[0_0_22px_hsl(var(--primary)/0.25)]"
       />
-      <span className="text-lg font-bold tracking-wide text-foreground">Glow</span>
+      <span className="truncate text-lg font-bold tracking-wide text-foreground">Glow</span>
     </span>
   );
 }
@@ -24,9 +24,10 @@ export function GlowMark({ size = 36 }: { size?: number }) {
 export function LangToggle() {
   const { toggle, lang } = useI18n();
   return (
-    <Button variant="ghost" size="sm" onClick={toggle} className="gap-1.5 border border-border/50 bg-background/35 px-3 shadow-sm hover:border-primary/30 hover:bg-primary/10">
+    <Button variant="ghost" size="sm" onClick={toggle} className="size-9 shrink-0 gap-1.5 border border-border/50 bg-background/35 px-0 shadow-sm hover:border-primary/30 hover:bg-primary/10 sm:h-9 sm:w-auto sm:px-3">
       <Globe className="size-4" />
-      {lang === "ar" ? "EN" : "ع"}
+      <span className="hidden sm:inline">{lang === "ar" ? "EN" : "ع"}</span>
+      <span className="sm:hidden">{lang === "ar" ? "EN" : "ع"}</span>
     </Button>
   );
 }
@@ -35,9 +36,9 @@ export function TopBar({ right, nav = false }: { right?: ReactNode; nav?: boolea
   const { t } = useI18n();
   return (
     <header className="sticky top-0 z-40 border-b border-border/60 bg-background/80 backdrop-blur-xl">
-      <div className="mx-auto flex h-16 w-full max-w-7xl items-center justify-between px-4">
-        <div className="flex items-center gap-6">
-          <Link to="/">
+      <div className="mx-auto flex h-14 w-full max-w-7xl items-center justify-between gap-2 px-3 sm:h-16 sm:px-4">
+        <div className="min-w-0 flex-1 flex items-center gap-3 sm:gap-6">
+          <Link to="/" className="min-w-0">
             <GlowMark />
           </Link>
           {nav && (
@@ -54,12 +55,12 @@ export function TopBar({ right, nav = false }: { right?: ReactNode; nav?: boolea
             </nav>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
           <a
             href={SUPPORT_SERVER_URL}
             target="_blank"
             rel="noreferrer"
-            className="hidden rounded-xl border border-transparent px-3 py-2 text-sm text-muted-foreground transition-[transform,background-color,border-color,color] duration-200 hover:-translate-y-0.5 hover:border-primary/15 hover:bg-primary/10 hover:text-primary sm:block"
+            className="hidden rounded-xl border border-transparent px-3 py-2 text-sm text-muted-foreground transition-[transform,background-color,border-color,color] duration-200 hover:-translate-y-0.5 hover:border-primary/15 hover:bg-primary/10 hover:text-primary md:block"
           >
             {t("سيرفر الدعم", "Support")}
           </a>

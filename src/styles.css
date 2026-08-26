@@ -138,7 +138,14 @@
     color-scheme: dark;
   }
 
+  html {
+    min-width: 320px;
+    overflow-x: hidden;
+  }
+
   body {
+    min-width: 320px;
+    overflow-x: hidden;
     background-color: var(--color-background);
     color: var(--color-foreground);
     font-family: var(--font-sans);
@@ -307,6 +314,35 @@
   scrollbar-width: thin;
   scrollbar-color: var(--border) transparent;
   overscroll-behavior-inline: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-x;
+}
+
+@utility dashboard-table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (max-width: 639px) {
+  .dashboard-shell {
+    padding-inline: 0.75rem;
+  }
+
+  .dashboard-main > .space-y-6 {
+    gap: 1rem;
+  }
+
+  .dashboard-main .glow-panel {
+    border-radius: 1.25rem;
+  }
+}
+
+@media (min-width: 640px) and (max-width: 1279px) {
+  .dashboard-shell {
+    padding-inline: 1.25rem;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
