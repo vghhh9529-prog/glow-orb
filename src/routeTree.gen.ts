@@ -17,6 +17,7 @@ import { Route as DashboardAccountRouteImport } from './routes/dashboard.account
 import { Route as DashboardGuildIdIndexRouteImport } from './routes/dashboard.$guildId.index'
 import { Route as DashboardGuildIdSectionRouteImport } from './routes/dashboard.$guildId.$section'
 import { Route as ApiPublicDiscordInteractionsRouteImport } from './routes/api/public/discord/interactions'
+import { Route as ApiPublicScamReportsUploadRouteImport } from './routes/api/public/scam-reports/upload'
 import { Route as ApiPublicAuthDiscordCallbackRouteImport } from './routes/api/public/auth/discord/callback'
 import { Route as ApiPublicAuthDiscordLoginRouteImport } from './routes/api/public/auth/discord/login'
 
@@ -61,6 +62,12 @@ const ApiPublicDiscordInteractionsRoute =
     path: '/api/public/discord/interactions',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicScamReportsUploadRoute =
+  ApiPublicScamReportsUploadRouteImport.update({
+    id: '/api/public/scam-reports/upload',
+    path: '/api/public/scam-reports/upload',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicAuthDiscordCallbackRoute =
   ApiPublicAuthDiscordCallbackRouteImport.update({
     id: '/api/public/auth/discord/callback',
@@ -83,6 +90,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/$guildId/$section': typeof DashboardGuildIdSectionRoute
   '/dashboard/$guildId/': typeof DashboardGuildIdIndexRoute
   '/api/public/discord/interactions': typeof ApiPublicDiscordInteractionsRoute
+  '/api/public/scam-reports/upload': typeof ApiPublicScamReportsUploadRoute
   '/api/public/auth/discord/callback': typeof ApiPublicAuthDiscordCallbackRoute
   '/api/public/auth/discord/login': typeof ApiPublicAuthDiscordLoginRoute
 }
@@ -93,6 +101,7 @@ export interface FileRoutesByTo {
   '/dashboard/$guildId/$section': typeof DashboardGuildIdSectionRoute
   '/dashboard/$guildId': typeof DashboardGuildIdIndexRoute
   '/api/public/discord/interactions': typeof ApiPublicDiscordInteractionsRoute
+  '/api/public/scam-reports/upload': typeof ApiPublicScamReportsUploadRoute
   '/api/public/auth/discord/callback': typeof ApiPublicAuthDiscordCallbackRoute
   '/api/public/auth/discord/login': typeof ApiPublicAuthDiscordLoginRoute
 }
@@ -106,6 +115,7 @@ export interface FileRoutesById {
   '/dashboard/$guildId/$section': typeof DashboardGuildIdSectionRoute
   '/dashboard/$guildId/': typeof DashboardGuildIdIndexRoute
   '/api/public/discord/interactions': typeof ApiPublicDiscordInteractionsRoute
+  '/api/public/scam-reports/upload': typeof ApiPublicScamReportsUploadRoute
   '/api/public/auth/discord/callback': typeof ApiPublicAuthDiscordCallbackRoute
   '/api/public/auth/discord/login': typeof ApiPublicAuthDiscordLoginRoute
 }
@@ -120,6 +130,7 @@ export interface FileRouteTypes {
     | '/dashboard/$guildId/$section'
     | '/dashboard/$guildId/'
     | '/api/public/discord/interactions'
+    | '/api/public/scam-reports/upload'
     | '/api/public/auth/discord/callback'
     | '/api/public/auth/discord/login'
   fileRoutesByTo: FileRoutesByTo
@@ -130,6 +141,7 @@ export interface FileRouteTypes {
     | '/dashboard/$guildId/$section'
     | '/dashboard/$guildId'
     | '/api/public/discord/interactions'
+    | '/api/public/scam-reports/upload'
     | '/api/public/auth/discord/callback'
     | '/api/public/auth/discord/login'
   id:
@@ -142,6 +154,7 @@ export interface FileRouteTypes {
     | '/dashboard/$guildId/$section'
     | '/dashboard/$guildId/'
     | '/api/public/discord/interactions'
+    | '/api/public/scam-reports/upload'
     | '/api/public/auth/discord/callback'
     | '/api/public/auth/discord/login'
   fileRoutesById: FileRoutesById
@@ -150,6 +163,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   DashboardRoute: typeof DashboardRouteWithChildren
   ApiPublicDiscordInteractionsRoute: typeof ApiPublicDiscordInteractionsRoute
+  ApiPublicScamReportsUploadRoute: typeof ApiPublicScamReportsUploadRoute
   ApiPublicAuthDiscordCallbackRoute: typeof ApiPublicAuthDiscordCallbackRoute
   ApiPublicAuthDiscordLoginRoute: typeof ApiPublicAuthDiscordLoginRoute
 }
@@ -212,6 +226,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicDiscordInteractionsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/scam-reports/upload': {
+      id: '/api/public/scam-reports/upload'
+      path: '/api/public/scam-reports/upload'
+      fullPath: '/api/public/scam-reports/upload'
+      preLoaderRoute: typeof ApiPublicScamReportsUploadRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/auth/discord/callback': {
       id: '/api/public/auth/discord/callback'
       path: '/api/public/auth/discord/callback'
@@ -262,6 +283,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   DashboardRoute: DashboardRouteWithChildren,
   ApiPublicDiscordInteractionsRoute: ApiPublicDiscordInteractionsRoute,
+  ApiPublicScamReportsUploadRoute: ApiPublicScamReportsUploadRoute,
   ApiPublicAuthDiscordCallbackRoute: ApiPublicAuthDiscordCallbackRoute,
   ApiPublicAuthDiscordLoginRoute: ApiPublicAuthDiscordLoginRoute,
 }

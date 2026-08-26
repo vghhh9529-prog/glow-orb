@@ -47,6 +47,12 @@ import {
   updateMessageGuardCounter,
 } from "../src/lib/message-guard.server";
 import { SLASH_COMMANDS } from "../src/lib/slash-commands";
+import {
+  isScamReviewButton,
+  reviewScamReport,
+  SCAMMER_ROLE_ID,
+  SCAM_REVIEW_CHANNEL_ID,
+} from "../src/lib/scam-reports.server";
 
 const SITE_URL = (
   process.env["PUBLIC_APP_URL"] ??
@@ -401,6 +407,58 @@ async function handleTicketButton(interaction: ButtonInteraction) {
     return interaction.update({ embeds: [await buildTicketEmbed(interaction.guild.name, String(ticketData.creatorId ?? interaction.user.id), "closed", String(ticketData.priority ?? "normal"))], components: [new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId("glow_ticket_reopen").setLabel("Reopen").setEmoji("↩️").setStyle(ButtonStyle.Success), new ButtonBuilder().setCustomId("glow_ticket_delete").setLabel("Delete ticket").setEmoji("🗑️").setStyle(ButtonStyle.Danger))] });
   }
   return interaction.reply({ content: "Unknown ticket action.", ephemeral: true });
+}
+
+async function handleScamReviewButton(interaction: ButtonInteraction) {
+  if (!interaction.guild || interaction.channelId !== SCAM_REVIEW_CHANNEL_ID) {
+    await interaction.reply({ content: "This review action is only available in the configured Glow review channel.", ephemeral: true });
+    return;
+  }
+  if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
+    await interaction.reply({ content: "Only server administrators can review scam reports.", ephemeral: true });
+    return;
+  }
+  const [action, reportId] = interaction.customId.split(":");
+  if (!reportId || (action !== "glow_scam_approve" && action !== "glow_scam_delete")) {
+    await interaction.reply({ content: "This review action is invalid.", ephemeral: true });
+    return;
+  }
+  await interaction.deferUpdate();
+  const decision = action === "glow_scam_approve" ? "approved" : "rejected";
+  try {
+    const result = await reviewScamReport(reportId, decision, interaction.user.id);
+    const statusText = decision === "approved" ? "APPROVED" : "DELETED / REJECTED";
+    const roleText = decision === "approved"
+      ? result.roleAssigned
+        ? `Scammer role assigned: ${SCAMMER_ROLE_ID}`
+        : `Scammer role was not assigned: ${result.roleAssignmentError ?? "the user is not in the source server"}`
+      : "No role was assigned.";
+    const embeds = interaction.message.embeds.map((embed, index) => {
+      if (index !== 0) return embed.toJSON();
+      return {
+        ...embed.toJSON(),
+        color: decision === "approved" ? 0x22c55e : 0xef4444,
+        footer: { text: `Glow Safety Review · ${statusText} by ${interaction.user.tag}` },
+      };
+    });
+    await interaction.editReply({
+      content: `Report ${reportId} · ${statusText}\n${roleText}`,
+      embeds,
+      components: [
+        {
+          type: 1,
+          components: [
+            { type: 2, style: 3, label: "Approve report", custom_id: `glow_scam_approve:${reportId}`, disabled: true },
+            { type: 2, style: 4, label: "Delete report", custom_id: `glow_scam_delete:${reportId}`, disabled: true },
+          ],
+        },
+      ],
+      allowedMentions: { parse: [] },
+    });
+  } catch (error) {
+    console.error("[Glow Bot] Scam report review failed", error);
+    await interaction.editReply({ content: "Could not complete this review. The report may already have been reviewed.", allowedMentions: { parse: [] } });
+  }
 }
 
 async function ensureUser(member: GuildMember) {
@@ -1028,6 +1086,15 @@ client.on(Events.InteractionCreate, async (interaction) => {
     await interaction.reply({
       content: "This counter is informational only. No action is taken when you press it.",
       ephemeral: true,
+    });
+    return;
+  }
+  if (interaction.isButton() && isScamReviewButton(interaction.customId)) {
+    await handleScamReviewButton(interaction).catch((error: unknown) => {
+      console.error("[Glow Bot] Scam review interaction failed", error);
+      if (!interaction.replied && !interaction.deferred) {
+        void interaction.reply({ content: "Could not review this scam report.", ephemeral: true }).catch(() => undefined);
+      }
     });
     return;
   }

@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import {
   Activity,
+  AlertTriangle,
   Archive,
   ArrowLeft,
   Ban,
@@ -10,11 +11,14 @@ import {
   Bot,
   Check,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   CircleDot,
   Command,
   Clock3,
   FileText,
   Hash,
+  ImagePlus,
   LayoutDashboard,
   ListChecks,
   MessageCircleMore,
@@ -29,6 +33,7 @@ import {
   Sparkles,
   Tags,
   Ticket,
+  Upload,
   Trash2,
   Trophy,
   UserPlus,
@@ -42,6 +47,8 @@ import { toast } from "sonner";
 import {
   addCase,
   getCases,
+  getScammerDirectory,
+  getScammerReports,
   getGuildLeaderboard,
   getItems,
   getOverview,
@@ -52,6 +59,7 @@ import {
   revokeModerationCase,
   saveItem,
   saveModule,
+  submitScamReport,
   updateSuggestion,
 } from "@/lib/api.functions";
 import { MODULE_KEYS, type ModuleKey, guildIconUrl } from "@/lib/discord";
@@ -132,6 +140,36 @@ export interface LeaderboardRow {
   monthly_xp?: number | null;
 }
 
+export interface ScamEvidence {
+  key: string;
+  url: string;
+  name: string;
+  type: string;
+  size: number;
+}
+
+export interface ScammerDirectoryEntry {
+  reportedUserId: string;
+  username: string;
+  avatar: string | null;
+  reportCount: number;
+  latestReportAt: string;
+}
+
+export interface ScammerReport {
+  id: string;
+  reportedUserId: string;
+  username: string;
+  avatar: string | null;
+  description: string;
+  evidence: ScamEvidence[];
+  reporterName: string | null;
+  createdAt: string;
+  reviewedAt: string | null;
+  roleAssigned: boolean;
+  roleAssignmentError: string | null;
+}
+
 export interface GuildOverview {
   topMembers: Array<{
     user_id: string;
@@ -145,7 +183,7 @@ export interface GuildOverview {
   itemCounts: Record<string, number>;
 }
 
-export type SectionKey = ModuleKey | "moderation" | "suggestion-review" | "leaderboard";
+export type SectionKey = ModuleKey | "moderation" | "suggestion-review" | "leaderboard" | "scammers";
 
 interface ModuleMeta {
   title: string;
@@ -308,7 +346,7 @@ export const MODULE_META: Record<ModuleKey, ModuleMeta> = {
   },
 };
 
-const SECTION_META: Record<"moderation" | "suggestion-review" | "leaderboard", ModuleMeta> = {
+const SECTION_META: Record<"moderation" | "suggestion-review" | "leaderboard" | "scammers", ModuleMeta> = {
   moderation: {
     title: "أدوات الإشراف",
     en: "Moderation tools",
@@ -324,6 +362,14 @@ const SECTION_META: Record<"moderation" | "suggestion-review" | "leaderboard", M
     enDescription: "Turn member suggestions into clear staff decisions.",
     icon: ListChecks,
     group: "community",
+  },
+  scammers: {
+    title: "قائمة النصابين",
+    en: "Scammer directory",
+    description: "راجع البلاغات المعتمدة وابحث عن الحسابات المبلغ عنها داخل السيرفر.",
+    enDescription: "Review approved reports and search reported accounts in this server.",
+    icon: AlertTriangle,
+    group: "safety",
   },
   leaderboard: {
     title: "صدارة السيرفر",
@@ -344,7 +390,8 @@ function isSectionKey(value: string | undefined): value is SectionKey {
     isModuleKey(value) ||
     value === "moderation" ||
     value === "suggestion-review" ||
-    value === "leaderboard"
+    value === "leaderboard" ||
+    value === "scammers"
   );
 }
 
@@ -501,6 +548,9 @@ export function GuildDashboardLayout({
                 <SectionLink guildId={guildId} section="leaderboard" icon={Trophy}>
                   {t("الصدارة", "Leaderboard")}
                 </SectionLink>
+                <SectionLink guildId={guildId} section="scammers" icon={AlertTriangle}>
+                  {t("قائمة النصابين", "Scammer directory")}
+                </SectionLink>
               </div>
             </div>
           </div>
@@ -519,6 +569,9 @@ export function GuildDashboardLayout({
                 </SectionLink>
               );
             })}
+            <SectionLink guildId={guildId} section="scammers" icon={AlertTriangle}>
+              {t("قائمة النصابين", "Scammers")}
+            </SectionLink>
           </div>
           {children}
         </main>
@@ -829,6 +882,7 @@ export function GuildSectionPage({
     return <ModulePage guildId={guildId} moduleKey={normalized} workspace={workspace} />;
   if (normalized === "moderation") return <ModerationPage guildId={guildId} />;
   if (normalized === "suggestion-review") return <SuggestionsPage guildId={guildId} />;
+  if (normalized === "scammers") return <ScammersPage guildId={guildId} />;
   return <LeaderboardPage guildId={guildId} />;
 }
 
@@ -1976,6 +2030,194 @@ function SuggestionsPage({ guildId }: { guildId: string }) {
           )}
         </div>
       </Card>
+    </div>
+  );
+}
+
+function ScammersPage({ guildId }: { guildId: string }) {
+  const { t } = useI18n();
+  const qc = useQueryClient();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [reportedUserId, setReportedUserId] = useState("");
+  const [description, setDescription] = useState("");
+  const [files, setFiles] = useState<File[]>([]);
+  const [search, setSearch] = useState("");
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const [reportIndex, setReportIndex] = useState(0);
+  const [submitted, setSubmitted] = useState(false);
+  const previewUrls = useMemo(() => files.map((file) => URL.createObjectURL(file)), [files]);
+  const meta = SECTION_META.scammers;
+  const directory = useQuery<ScammerDirectoryEntry[]>({
+    queryKey: ["scammer-directory", guildId, search],
+    queryFn: async () =>
+      (await getScammerDirectory({ data: { guildId, query: search } })) as unknown as ScammerDirectoryEntry[],
+  });
+  const reports = useQuery<ScammerReport[]>({
+    queryKey: ["scammer-reports", guildId, selectedUserId],
+    enabled: Boolean(selectedUserId),
+    queryFn: async () =>
+      (await getScammerReports({ data: { guildId, reportedUserId: selectedUserId! } })) as unknown as ScammerReport[],
+  });
+  const submit = useMutation({
+    mutationFn: async () => {
+      const evidenceKeys: string[] = [];
+      for (const file of files) {
+        const form = new FormData();
+        form.append("guildId", guildId);
+        form.append("files", file, file.name);
+        const response = await fetch("/api/public/scam-reports/upload", { method: "POST", body: form });
+        const body = (await response.json()) as { ok?: boolean; file?: { key: string }; error?: string };
+        if (!response.ok || !body.file?.key) throw new Error(body.error ?? "UPLOAD_FAILED");
+        evidenceKeys.push(body.file.key);
+      }
+      return submitScamReport({
+        data: { guildId, reportedUserId: reportedUserId.trim(), description: description.trim(), evidenceKeys },
+      });
+    },
+    onMutate: () => setSubmitted(false),
+    onSuccess: (result) => {
+      setSubmitted(true);
+      setReportedUserId("");
+      setDescription("");
+      setFiles([]);
+      toast.success(
+        result.reviewQueued
+          ? t("تم إرسال البلاغ للمراجعة", "Report sent for review")
+          : t("تم حفظ البلاغ لكن تعذر إرساله للمراجعة", "Report saved, but review delivery failed"),
+      );
+      void qc.invalidateQueries({ queryKey: ["scammer-directory", guildId] });
+    },
+    onError: (error: Error) => toast.error(error.message === "FORBIDDEN" ? t("لا تملك صلاحية هذا السيرفر", "You cannot manage this server") : t("تعذر تقديم البلاغ", "Could not submit the report")),
+  });
+
+  useEffect(() => {
+    return () => previewUrls.forEach((url) => URL.revokeObjectURL(url));
+  }, [previewUrls]);
+  useEffect(() => setReportIndex(0), [selectedUserId]);
+
+  const addFiles = (incoming: File[]) => {
+    const images = incoming.filter((file) => ["image/jpeg", "image/png", "image/gif", "image/webp"].includes(file.type));
+    const tooLarge = incoming.some((file) => file.size > 5 * 1024 * 1024);
+    if (tooLarge) toast.error(t("حجم كل صورة يجب ألا يتجاوز 5MB", "Each image must be 5MB or smaller"));
+    if (images.length !== incoming.length && incoming.length > 0) toast.error(t("يسمح برفع صور JPG أو PNG أو GIF أو WEBP فقط", "Only JPG, PNG, GIF or WEBP images are allowed"));
+    setFiles((current) => [...current, ...images.filter((file) => file.size <= 5 * 1024 * 1024)].slice(0, 5));
+  };
+  const currentReport = reports.data?.[reportIndex];
+
+  return (
+    <div className="space-y-6">
+      <SectionHero icon={meta.icon} title={t(meta.title, meta.en)} description={t(meta.description, meta.enDescription)} />
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.05fr)_minmax(360px,0.95fr)]">
+        <Card className="glow-panel relative overflow-hidden p-5 sm:p-6">
+          <div className="pointer-events-none absolute -end-20 -top-24 size-64 rounded-full bg-destructive/10 blur-3xl" />
+          <PanelTitle
+            icon={AlertTriangle}
+            title={t("رفع بلاغ جديد", "Submit a scam report")}
+            description={t("كل بلاغ يمر على مراجعة الإدارة قبل أن يظهر في القائمة.", "Every report is reviewed by administrators before it appears in the directory.")}
+          />
+          <div className="relative mt-6 space-y-5" onPaste={(event) => addFiles(Array.from(event.clipboardData.files))}>
+            <div className="space-y-2">
+              <Label htmlFor="reported-user-id">{t("معرّف الشخص النصاب", "Scammer Discord ID")}</Label>
+              <Input id="reported-user-id" value={reportedUserId} onChange={(event) => setReportedUserId(event.target.value.replace(/[^0-9]/g, "").slice(0, 20))} placeholder="123456789012345678" inputMode="numeric" maxLength={20} />
+              <p className="text-xs text-muted-foreground">{t("انسخ User ID من Discord، وليس الاسم أو المنشن.", "Copy the Discord User ID, not the username or mention.")}</p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="scam-description">{t("شرح الواقعة", "What happened?")}</Label>
+              <Textarea id="scam-description" value={description} onChange={(event) => setDescription(event.target.value.slice(0, 5000))} placeholder={t("اشرح ما حدث بالتفصيل وأضف التواريخ والروابط المهمة…", "Explain what happened and include dates or relevant links…")} rows={7} maxLength={5000} />
+              <div className="flex justify-end text-xs text-muted-foreground">{description.length}/5000</div>
+            </div>
+            <div className="space-y-2">
+              <Label>{t("الأدلة والصور", "Evidence images")}</Label>
+              <div
+                className="group cursor-pointer rounded-2xl border border-dashed border-primary/35 bg-primary/5 p-6 text-center transition hover:border-primary/70 hover:bg-primary/10"
+                onClick={() => inputRef.current?.click()}
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={(event) => { event.preventDefault(); addFiles(Array.from(event.dataTransfer.files)); }}
+              >
+                <input ref={inputRef} type="file" accept="image/jpeg,image/png,image/gif,image/webp" multiple className="sr-only" onChange={(event) => { addFiles(Array.from(event.target.files ?? [])); event.target.value = ""; }} />
+                <ImagePlus className="mx-auto size-9 text-primary transition group-hover:scale-110" />
+                <p className="mt-3 text-sm font-semibold text-foreground">{t("اضغط أو اسحب الصور هنا", "Click or drop images here")}</p>
+                <p className="mt-1 text-xs text-muted-foreground">{t("يمكنك أيضاً لصق الصورة مباشرة. حتى 5 صور، 5MB للصورة.", "You can also paste an image. Up to 5 images, 5MB each.")}</p>
+              </div>
+              {files.length > 0 && (
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                  {files.map((file, index) => (
+                    <div key={`${file.name}-${file.lastModified}-${index}`} className="group relative overflow-hidden rounded-xl border border-border/60 bg-background/30">
+                      <img src={previewUrls[index]} alt={file.name} className="aspect-video w-full object-cover" />
+                      <button type="button" onClick={() => setFiles((current) => current.filter((_, fileIndex) => fileIndex !== index))} className="absolute end-2 top-2 rounded-lg bg-background/85 p-1.5 text-destructive opacity-0 shadow transition group-hover:opacity-100" aria-label={t("حذف الصورة", "Remove image")}><Trash2 className="size-4" /></button>
+                      <p className="truncate px-2 py-1.5 text-[11px] text-muted-foreground">{file.name}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <Button type="button" onClick={() => submit.mutate()} disabled={submit.isPending || reportedUserId.length < 15 || description.trim().length < 20} className="w-full gap-2 bg-gradient-to-r from-primary to-accent text-primary-foreground shadow-[0_14px_28px_-16px_hsl(var(--primary))] hover:brightness-110">
+              {submit.isPending ? <RefreshCw className="size-4 animate-spin" /> : <Upload className="size-4" />}
+              {submit.isPending ? t("جاري رفع الأدلة…", "Uploading evidence…") : t("تقديم البلاغ للمراجعة", "Submit for review")}
+            </Button>
+            {(submitted || submit.isError) && (
+              <div className={`rounded-2xl border p-4 ${submitted ? "border-success/35 bg-success/10 text-success" : "border-destructive/35 bg-destructive/10 text-destructive"} ${submitted ? "animate-report-success" : ""}`}>
+                <div className="flex items-start gap-3">
+                  {submitted ? <Check className="mt-0.5 size-5 shrink-0" /> : <AlertTriangle className="mt-0.5 size-5 shrink-0" />}
+                  <p className="text-sm leading-6">{submitted ? t("تم استلام البلاغ وسيتم فحصه من إدارة Glow قبل نشره.", "Your report was received and will be checked by Glow administrators before publication.") : t("لم يكتمل الإرسال. راجع البيانات وحاول مرة أخرى.", "The submission did not complete. Check the details and try again.")}</p>
+                </div>
+              </div>
+            )}
+          </div>
+        </Card>
+
+        <Card className="glow-panel p-5 sm:p-6">
+          <PanelTitle icon={Search} title={t("قائمة النصابين", "Scammer directory")} description={t("تظهر هنا الحسابات التي اعتمدتها الإدارة فقط.", "Only administrator-approved accounts appear here.")} action={<Button variant="outline" size="icon" onClick={() => directory.refetch()} aria-label={t("تحديث", "Refresh")}><RefreshCw className={`size-4 ${directory.isFetching ? "animate-spin" : ""}`} /></Button>} />
+          <div className="relative mt-5">
+            <Search className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t("ابحث بالاسم أو Discord ID…", "Search name or Discord ID…")} className="ps-9" />
+          </div>
+          <div className="mt-4 space-y-2">
+            {directory.isLoading && <Skeleton className="h-24" />}
+            {(directory.data ?? []).map((item) => (
+              <div key={item.reportedUserId} className={`flex items-center gap-3 rounded-2xl border p-3 text-start transition hover:-translate-y-0.5 hover:border-primary/40 hover:bg-primary/5 ${selectedUserId === item.reportedUserId ? "border-primary/50 bg-primary/10" : "border-border/50 bg-background/20"}`}>
+                {item.avatar ? <img src={item.avatar} alt="" className="size-11 rounded-full border border-primary/25 object-cover" /> : <span className="flex size-11 items-center justify-center rounded-full bg-primary/15 font-bold text-primary">{item.username.slice(0, 1).toUpperCase()}</span>}
+                <span className="min-w-0 flex-1"><span className="block truncate text-sm font-bold text-foreground">{item.username}</span><span className="mt-1 block truncate font-mono text-[11px] text-muted-foreground">{item.reportedUserId}</span></span>
+                <span className="shrink-0 rounded-lg bg-destructive/10 px-2 py-1 text-xs font-bold text-destructive">{item.reportCount} {t("بلاغ", "reports")}</span>
+                <Button type="button" variant="outline" size="sm" onClick={() => setSelectedUserId(item.reportedUserId)} className="shrink-0 gap-1.5">
+                  <FileText className="size-3.5" />
+                  {t("عرض النصاب", "View scammer")}
+                </Button>
+              </div>
+            ))}
+            {!directory.isLoading && (directory.data ?? []).length === 0 && <EmptyState icon={Shield} title={t("لا توجد نتائج معتمدة", "No approved scammers found")} />}
+          </div>
+        </Card>
+      </div>
+
+      {selectedUserId && (
+        <Card className="glow-panel overflow-hidden p-5 sm:p-6">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <PanelTitle icon={FileText} title={t("بلاغات الحساب", "Reports for this account")} description={selectedUserId} />
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="icon" onClick={() => setReportIndex((index) => Math.max(0, index - 1))} disabled={reportIndex === 0 || reports.isLoading} aria-label={t("السابق", "Previous")}><ChevronLeft className="size-4" /></Button>
+              <span className="min-w-16 text-center text-xs text-muted-foreground">{reports.data?.length ? `${reportIndex + 1} / ${reports.data.length}` : "—"}</span>
+              <Button variant="outline" size="icon" onClick={() => setReportIndex((index) => Math.min((reports.data?.length ?? 1) - 1, index + 1))} disabled={reports.isLoading || !reports.data || reportIndex >= reports.data.length - 1} aria-label={t("التالي", "Next")}><ChevronRight className="size-4" /></Button>
+            </div>
+          </div>
+          {reports.isLoading && <Skeleton className="mt-5 h-56" />}
+          {currentReport && (
+            <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.72fr)]">
+              <div className="rounded-2xl border border-border/50 bg-background/20 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3"><Badge className="bg-success/15 text-success hover:bg-success/15">{t("بلاغ معتمد", "Approved report")}</Badge><span className="text-xs text-muted-foreground">{formatDate(currentReport.createdAt)}</span></div>
+                <p className="mt-4 whitespace-pre-wrap text-sm leading-7 text-foreground/85">{currentReport.description}</p>
+                <p className="mt-4 text-xs text-muted-foreground">{t("مقدم البلاغ", "Reported by")}: {currentReport.reporterName ?? t("عضو", "Member")}</p>
+                {currentReport.roleAssigned ? <p className="mt-2 text-xs text-success">{t("تمت إضافة رول النصاب عند الاعتماد.", "Scammer role was assigned on approval.")}</p> : currentReport.roleAssignmentError && <p className="mt-2 text-xs text-warning">{currentReport.roleAssignmentError}</p>}
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                {currentReport.evidence.map((evidence) => <a key={evidence.key} href={evidence.url} target="_blank" rel="noreferrer" className="group overflow-hidden rounded-xl border border-border/50 bg-background/20"><img src={evidence.url} alt={evidence.name} className="aspect-video w-full object-cover transition duration-200 group-hover:scale-105" /></a>)}
+                {currentReport.evidence.length === 0 && <div className="col-span-2 flex min-h-32 items-center justify-center rounded-xl border border-dashed border-border/60 text-center text-xs text-muted-foreground">{t("لا توجد صور مرفقة", "No image evidence attached")}</div>}
+              </div>
+            </div>
+          )}
+          {!reports.isLoading && !currentReport && <EmptyState icon={FileText} title={t("لا توجد بلاغات لهذا الحساب", "No reports for this account")} />}
+        </Card>
+      )}
     </div>
   );
 }

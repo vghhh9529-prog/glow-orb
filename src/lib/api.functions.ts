@@ -97,6 +97,37 @@ export const provisionMessageGuard = createServerFn({ method: "POST" })
     return provision(data);
   });
 
+export const submitScamReport = createServerFn({ method: "POST" })
+  .inputValidator(
+    (data) =>
+      z
+        .object({
+          guildId: discordId,
+          reportedUserId: discordId,
+          description: z.string().trim().min(20).max(5000),
+          evidenceKeys: z.array(z.string().min(1).max(220)).max(5),
+        })
+        .parse(data),
+  )
+  .handler(async ({ data }) => {
+    const { submitScamReport: submit } = await import("./scam-reports.server");
+    return submit(data);
+  });
+
+export const getScammerDirectory = createServerFn({ method: "GET" })
+  .inputValidator((data) => z.object({ guildId: discordId, query: z.string().trim().max(100).optional() }).parse(data))
+  .handler(async ({ data }) => {
+    const { listScammerDirectory } = await import("./scam-reports.server");
+    return listScammerDirectory(data.guildId, data.query ?? "");
+  });
+
+export const getScammerReports = createServerFn({ method: "GET" })
+  .inputValidator((data) => z.object({ guildId: discordId, reportedUserId: discordId }).parse(data))
+  .handler(async ({ data }) => {
+    const { listScammerReports } = await import("./scam-reports.server");
+    return listScammerReports(data.guildId, data.reportedUserId);
+  });
+
 export const getItems = createServerFn({ method: "GET" })
   .inputValidator((data) => z.object({ guildId: discordId, kind: itemKind }).parse(data))
   .handler(async ({ data }) => {
