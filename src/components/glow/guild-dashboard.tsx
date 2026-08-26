@@ -372,17 +372,17 @@ function SectionLink({
     <Link
       to={section === "overview" ? "/dashboard/$guildId" : "/dashboard/$guildId/$section"}
       params={section === "overview" ? { guildId } : { guildId, section }}
-      className={`group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-colors ${
+      className={`group relative flex items-center gap-3 overflow-hidden rounded-xl border px-3 py-2.5 text-sm transition-[transform,background-color,border-color,box-shadow,color] duration-200 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
         active
-          ? "bg-primary/15 text-primary shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.24)]"
-          : "text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
+          ? "border-primary/25 bg-gradient-to-r from-primary/20 via-primary/10 to-accent/5 text-foreground shadow-[0_10px_24px_-18px_hsl(var(--primary)/0.95),inset_0_0_0_1px_hsl(var(--primary)/0.16)] before:absolute before:inset-y-2 before:start-0 before:w-0.5 before:rounded-full before:bg-gradient-to-b before:from-primary before:to-accent"
+          : "border-transparent text-muted-foreground hover:-translate-y-0.5 hover:border-primary/15 hover:bg-sidebar-accent/80 hover:text-foreground hover:shadow-[0_10px_24px_-18px_hsl(var(--primary)/0.8)]"
       }`}
       aria-current={active ? "page" : undefined}
     >
-      <Icon
-        className={`size-4 shrink-0 ${active ? "text-primary" : "text-muted-foreground group-hover:text-primary"}`}
-      />
-      <span className="truncate">{children}</span>
+      <span className={`relative z-10 flex size-8 shrink-0 items-center justify-center rounded-lg transition-[background-color,box-shadow,color,transform] duration-200 ${active ? "bg-primary/15 text-primary shadow-[0_0_18px_-6px_hsl(var(--primary))]" : "bg-background/20 text-muted-foreground group-hover:scale-105 group-hover:bg-primary/10 group-hover:text-primary"}`}>
+        <Icon className="size-4" />
+      </span>
+      <span className="relative z-10 truncate font-semibold">{children}</span>
       <span className="sr-only">{href}</span>
     </Link>
   );
@@ -508,7 +508,7 @@ export function GuildDashboardLayout({
         </aside>
 
         <main dir={dir} className="min-w-0 flex-1 animate-rise-in">
-          <div className="mb-4 flex gap-2 overflow-x-auto rounded-2xl border border-border/50 bg-sidebar/80 p-2 lg:hidden">
+          <div className="dashboard-nav-scroll mb-4 flex gap-2 overflow-x-auto rounded-2xl border border-primary/15 bg-gradient-to-r from-sidebar/95 via-sidebar/80 to-primary/5 p-2 shadow-[0_16px_36px_-24px_hsl(var(--primary)/0.9)] lg:hidden">
             <SectionLink guildId={guildId} section="overview" icon={LayoutDashboard}>
               {t("الرئيسية", "Home")}
             </SectionLink>

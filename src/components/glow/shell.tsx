@@ -24,7 +24,7 @@ export function GlowMark({ size = 36 }: { size?: number }) {
 export function LangToggle() {
   const { toggle, lang } = useI18n();
   return (
-    <Button variant="ghost" size="sm" onClick={toggle} className="gap-1.5">
+    <Button variant="ghost" size="sm" onClick={toggle} className="gap-1.5 border border-border/50 bg-background/35 px-3 shadow-sm hover:border-primary/30 hover:bg-primary/10">
       <Globe className="size-4" />
       {lang === "ar" ? "EN" : "ع"}
     </Button>
@@ -42,13 +42,13 @@ export function TopBar({ right, nav = false }: { right?: ReactNode; nav?: boolea
           </Link>
           {nav && (
             <nav className="hidden items-center gap-1 md:flex" aria-label={t("التنقل الرئيسي", "Primary navigation")}>
-              <a href="#features" className="rounded-lg px-3 py-2 text-xs font-semibold text-muted-foreground transition-colors hover:bg-primary/10 hover:text-foreground">
+              <a href="#features" className="rounded-xl border border-transparent px-3 py-2 text-xs font-semibold text-muted-foreground transition-[transform,background-color,border-color,box-shadow,color] duration-200 hover:-translate-y-0.5 hover:border-primary/15 hover:bg-gradient-to-r hover:from-primary/12 hover:to-accent/10 hover:text-foreground hover:shadow-[0_10px_24px_-18px_hsl(var(--primary)/0.9)]">
                 {t("المزايا", "Features")}
               </a>
-              <a href="#systems" className="rounded-lg px-3 py-2 text-xs font-semibold text-muted-foreground transition-colors hover:bg-primary/10 hover:text-foreground">
+              <a href="#systems" className="rounded-xl border border-transparent px-3 py-2 text-xs font-semibold text-muted-foreground transition-[transform,background-color,border-color,box-shadow,color] duration-200 hover:-translate-y-0.5 hover:border-primary/15 hover:bg-gradient-to-r hover:from-primary/12 hover:to-accent/10 hover:text-foreground hover:shadow-[0_10px_24px_-18px_hsl(var(--primary)/0.9)]">
                 {t("الأنظمة", "Systems")}
               </a>
-              <a href="#commands" className="rounded-lg px-3 py-2 text-xs font-semibold text-muted-foreground transition-colors hover:bg-primary/10 hover:text-foreground">
+              <a href="#commands" className="rounded-xl border border-transparent px-3 py-2 text-xs font-semibold text-muted-foreground transition-[transform,background-color,border-color,box-shadow,color] duration-200 hover:-translate-y-0.5 hover:border-primary/15 hover:bg-gradient-to-r hover:from-primary/12 hover:to-accent/10 hover:text-foreground hover:shadow-[0_10px_24px_-18px_hsl(var(--primary)/0.9)]">
                 {t("الأوامر", "Commands")}
               </a>
             </nav>
@@ -59,7 +59,7 @@ export function TopBar({ right, nav = false }: { right?: ReactNode; nav?: boolea
             href={SUPPORT_SERVER_URL}
             target="_blank"
             rel="noreferrer"
-            className="hidden text-sm text-muted-foreground transition-colors hover:text-primary sm:block"
+            className="hidden rounded-xl border border-transparent px-3 py-2 text-sm text-muted-foreground transition-[transform,background-color,border-color,color] duration-200 hover:-translate-y-0.5 hover:border-primary/15 hover:bg-primary/10 hover:text-primary sm:block"
           >
             {t("سيرفر الدعم", "Support")}
           </a>
