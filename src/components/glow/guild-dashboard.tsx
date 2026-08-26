@@ -528,6 +528,9 @@ export function GuildDashboardLayout({
                 <SectionLink guildId={guildId} section="overview" icon={LayoutDashboard}>
                   {t("نظرة عامة", "Overview")}
                 </SectionLink>
+                <SectionLink guildId={guildId} section="scammers" icon={AlertTriangle}>
+                  {t("قائمة النصابين", "Scammer directory")}
+                </SectionLink>
               </div>
             </Card>
 
@@ -563,9 +566,6 @@ export function GuildDashboardLayout({
                 <SectionLink guildId={guildId} section="leaderboard" icon={Trophy}>
                   {t("الصدارة", "Leaderboard")}
                 </SectionLink>
-                <SectionLink guildId={guildId} section="scammers" icon={AlertTriangle}>
-                  {t("قائمة النصابين", "Scammer directory")}
-                </SectionLink>
               </div>
             </div>
           </div>
@@ -576,6 +576,9 @@ export function GuildDashboardLayout({
             <SectionLink guildId={guildId} section="overview" icon={LayoutDashboard}>
               {t("الرئيسية", "Home")}
             </SectionLink>
+            <SectionLink guildId={guildId} section="scammers" icon={AlertTriangle}>
+              {t("قائمة النصابين", "Scammers")}
+            </SectionLink>
             {MODULE_KEYS.map((key) => {
               const Icon = MODULE_META[key].icon;
               return (
@@ -584,9 +587,6 @@ export function GuildDashboardLayout({
                 </SectionLink>
               );
             })}
-            <SectionLink guildId={guildId} section="scammers" icon={AlertTriangle}>
-              {t("قائمة النصابين", "Scammers")}
-            </SectionLink>
           </div>
           {children}
         </main>
