@@ -1,15 +1,24 @@
 import {
   API,
+  addGuildMemberRole,
   banMember,
   clearChannelMessages,
   fetchBotGuild,
   fetchDiscordUser,
+  fetchGuildChannels,
+  fetchGuildEmojis,
+  fetchGuildInvites,
   fetchGuildMember,
+  fetchGuildMembers,
   fetchGuildRoles,
   CLIENT_ID,
+  getGuildBans,
   kickMember,
+  removeGuildMemberRole,
   timeoutMember,
   unbanMember,
+  updateGuildChannel,
+  updateGuildMember,
 } from "./discord-api.server";
 import { ensureGuildRow } from "./guilds.server";
 import { discordAccountCreatedAt, renderProfileCard, renderUserCard } from "./card-renderer.server";
@@ -165,6 +174,19 @@ export function pingResponse() {
 async function db() {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   return supabaseAdmin;
+}
+
+async function configuredColorRoleIds(guildId: string) {
+  const database = await db();
+  const { data } = await database.from("guild_modules").select("config").eq("guild_id", guildId).eq("module", "commands").maybeSingle();
+  const config = data?.config;
+  if (!config || typeof config !== "object" || Array.isArray(config)) return new Set<string>();
+  const raw = (config as Record<string, unknown>)["colorRoleIds"];
+  return new Set(
+    Array.isArray(raw)
+      ? raw.filter((value): value is string => typeof value === "string" && /^\d{15,25}$/.test(value)).slice(0, 50)
+      : [],
+  );
 }
 
 async function ensureUser(user: InteractionUser) {
@@ -455,10 +477,13 @@ function discordAssetUrl(base: string, id: string, hash: string | null | undefin
 async function colorsInfo(payload: DiscordInteractionPayload) {
   const guildId = payload.guild_id;
   if (!guildId) return interactionResponse("هذا الأمر يعمل داخل السيرفر فقط.", { ephemeral: true });
-  const roles = (await fetchGuildRoles(guildId)).filter((role) => !role.managed && role.color > 0).sort((a, b) => b.position - a.position);
-  if (roles.length === 0) return interactionResponse("لا توجد رولات ملوّنة في السيرفر حالياً.", { ephemeral: true });
+  const configured = await configuredColorRoleIds(guildId);
+  const allRoles = (await fetchGuildRoles(guildId)).filter((role) => !role.managed && role.color > 0).sort((a, b) => b.position - a.position);
+  const roles = configured.size ? allRoles.filter((role) => configured.has(role.id)) : allRoles;
+  if (roles.length === 0) return interactionResponse("لا توجد رولات ملوّنة مهيأة في السيرفر حالياً.", { ephemeral: true });
   const rows = roles.slice(0, 20).map((role) => `• **${role.name}** · \`#${role.color.toString(16).padStart(6, "0").toUpperCase()}\``).join("\n");
-  return interactionResponse(`**ألوان الرولات (${roles.length})**\n${rows}${roles.length > 20 ? `\n… و ${roles.length - 20} لون إضافي.` : ""}`);
+  const note = configured.size ? "" : "\n\nملاحظة: هذه قائمة عرض فقط. أضف رتب الألوان في إعدادات Command Center ليبدّل Glow بينها بأمان.";
+  return interactionResponse(`**ألوان الرولات (${roles.length})**\n${rows}${roles.length > 20 ? `\n… و ${roles.length - 20} لون إضافي.` : ""}${note}`);
 }
 
 async function rollInfo() {
@@ -579,6 +604,240 @@ async function pingInfo() {
   return interactionResponse("**Glow is online.** الاتصال بالـGateway والداشبورد يعملان.");
 }
 
+async function getEmojisInfo(payload: DiscordInteractionPayload) {
+  const guildId = payload.guild_id;
+  if (!guildId) return interactionResponse("هذا الأمر يعمل داخل السيرفر فقط.", { ephemeral: true });
+  const emojis = await fetchGuildEmojis(guildId);
+  if (!emojis.length) return interactionResponse("لا توجد إيموجيات مخصصة في هذا السيرفر.", { ephemeral: true });
+  const rows = emojis.slice(0, 40).map((emoji, index) => `${index + 1}. ${emoji.animated ? `<a:${emoji.name ?? "emoji"}:${emoji.id}>` : `<:${emoji.name ?? "emoji"}:${emoji.id}>`} **${emoji.name ?? "unnamed"}**`).join("\n");
+  return interactionResponse(`**إيموجيات السيرفر (${emojis.length})**\n${rows}${emojis.length > 40 ? `\n… و ${emojis.length - 40} إضافي.` : ""}`);
+}
+
+async function colorSetInfo(payload: DiscordInteractionPayload, user: InteractionUser) {
+  const guildId = payload.guild_id;
+  const number = Number(interactionOption<number>(payload, "number") ?? 0);
+  if (!guildId || !number) return interactionResponse("اختر رقم لون صحيحاً من /colors.", { ephemeral: true });
+  const configured = await configuredColorRoleIds(guildId);
+  const allRoles = (await fetchGuildRoles(guildId)).filter((role) => !role.managed && role.color > 0).sort((a, b) => b.position - a.position);
+  const roles = configured.size ? allRoles.filter((role) => configured.has(role.id)) : allRoles;
+  const selected = roles[number - 1];
+  if (!selected) return interactionResponse("رقم اللون غير موجود. استخدم /colors أولاً.", { ephemeral: true });
+  if (configured.size) {
+    for (const role of roles) {
+      if (role.id !== selected.id) await removeGuildMemberRole(guildId, user.id, role.id, "Glow color role selection").catch(() => false);
+    }
+  }
+  const ok = await addGuildMemberRole(guildId, user.id, selected.id, "Glow color role selection");
+  return ok
+    ? interactionResponse(configured.size ? `تم اختيار اللون **${selected.name}** بنجاح.` : `تمت إضافة اللون **${selected.name}**. أضف رتب الألوان في Command Center ليبدّل Glow بينها تلقائياً.`)
+    : interactionResponse("تعذر إضافة اللون. تأكد أن رتبة Glow أعلى من رتبة اللون.", { ephemeral: true });
+}
+
+async function invitesInfo(payload: DiscordInteractionPayload) {
+  const guildId = payload.guild_id;
+  if (!guildId) return interactionResponse("هذا الأمر يعمل داخل السيرفر فقط.", { ephemeral: true });
+  if (!hasPermission(payload, 0x20n)) return permissionDenied();
+  const invites = await fetchGuildInvites(guildId);
+  if (!invites.length) return interactionResponse("لا توجد دعوات يمكن عرضها أو لا يملك Glow صلاحية قراءتها.", { ephemeral: true });
+  const rows = invites.slice(0, 20).map((invite) => `• ${invite.code} · ${invite.uses ?? 0} استخدام · ${invite.channel?.name ?? "قناة غير معروفة"}`).join("\n");
+  return interactionResponse(`**دعوات السيرفر (${invites.length})**\n${rows}${invites.length > 20 ? `\n… و ${invites.length - 20} دعوة إضافية.` : ""}`);
+}
+
+function levelFromXpValue(xp: number, curve = 100) {
+  return Math.max(0, Math.floor(Math.sqrt(Math.max(0, xp) / Math.max(1, curve))));
+}
+
+async function resetLevelInfo(payload: DiscordInteractionPayload) {
+  const guildId = payload.guild_id;
+  if (!guildId) return interactionResponse("هذا الأمر يعمل داخل السيرفر فقط.", { ephemeral: true });
+  if (!hasPermission(payload, 0x20n)) return permissionDenied();
+  const targetId = interactionOption<string>(payload, "member");
+  const database = await db();
+  let query = database.from("member_levels").update({ xp: 0, level: 0, daily_xp: 0, weekly_xp: 0, monthly_xp: 0, voice_minutes: 0, updated_at: new Date().toISOString() }).eq("guild_id", guildId);
+  if (targetId) query = query.eq("user_id", targetId);
+  const { error } = await query;
+  if (error) return interactionResponse("تعذر إعادة تعيين نقاط XP حالياً.", { ephemeral: true });
+  return interactionResponse(targetId ? `تمت إعادة تعيين XP للعضو <@${targetId}>.` : "تمت إعادة تعيين XP لكل أعضاء السيرفر.");
+}
+
+async function setLevelInfo(payload: DiscordInteractionPayload) {
+  const guildId = payload.guild_id;
+  const targetId = interactionOption<string>(payload, "member");
+  const level = Math.max(0, Math.min(10_000, Number(interactionOption<number>(payload, "level") ?? 0)));
+  if (!guildId || !targetId) return interactionResponse("اختر عضواً داخل السيرفر.", { ephemeral: true });
+  if (!hasPermission(payload, 0x20n)) return permissionDenied();
+  const database = await db();
+  const { error } = await database.from("member_levels").upsert({ guild_id: guildId, user_id: targetId, username: `<@${targetId}>`, xp: level * 100 * level, level, updated_at: new Date().toISOString() }, { onConflict: "guild_id,user_id" });
+  return error ? interactionResponse("تعذر تعيين المستوى.", { ephemeral: true }) : interactionResponse(`تم تعيين مستوى <@${targetId}> إلى **${level}**.`);
+}
+
+async function setXpInfo(payload: DiscordInteractionPayload) {
+  const guildId = payload.guild_id;
+  const targetId = interactionOption<string>(payload, "member");
+  const xp = Math.max(0, Math.min(1_000_000_000, Number(interactionOption<number>(payload, "xp") ?? 0)));
+  if (!guildId || !targetId) return interactionResponse("اختر عضواً داخل السيرفر.", { ephemeral: true });
+  if (!hasPermission(payload, 0x20n)) return permissionDenied();
+  const database = await db();
+  const { error } = await database.from("member_levels").upsert({ guild_id: guildId, user_id: targetId, username: `<@${targetId}>`, xp, level: levelFromXpValue(xp), updated_at: new Date().toISOString() }, { onConflict: "guild_id,user_id" });
+  return error ? interactionResponse("تعذر تعيين XP.", { ephemeral: true }) : interactionResponse(`تم تعيين XP للعضو <@${targetId}> إلى **${xp}**.`);
+}
+
+function channelOption(payload: DiscordInteractionPayload) {
+  return interactionOption<string>(payload, "channel") ?? payload.channel_id;
+}
+
+async function channelVisibilityInfo(payload: DiscordInteractionPayload, mode: "hide" | "show" | "lock" | "unlock") {
+  const guildId = payload.guild_id;
+  const channelId = channelOption(payload);
+  if (!guildId || !channelId) return interactionResponse("اختر قناة داخل السيرفر.", { ephemeral: true });
+  if (!hasPermission(payload, 0x10n)) return permissionDenied();
+  const channels = await fetchGuildChannels(guildId);
+  const channel = channels.find((item) => item.id === channelId && item.guild_id === guildId);
+  if (!channel) return interactionResponse("القناة غير موجودة في هذا السيرفر.", { ephemeral: true });
+  const existing = channel.permission_overwrites?.find((overwrite) => overwrite.id === guildId && overwrite.type === 0);
+  const currentAllow = BigInt(existing?.allow ?? "0");
+  const currentDeny = BigInt(existing?.deny ?? "0");
+  const viewBit = 1024n;
+  const sendBit = 2048n;
+  const bit = mode === "hide" || mode === "show" ? viewBit : sendBit;
+  const enable = mode === "show" || mode === "unlock";
+  const allow = enable ? currentAllow | bit : currentAllow & ~bit;
+  const deny = enable ? currentDeny & ~bit : currentDeny | bit;
+  const ok = await updateGuildChannel(channelId, { permission_overwrites: [{ id: guildId, type: 0, allow: allow.toString(), deny: deny.toString() }] }, `Glow ${mode} command`);
+  return ok ? interactionResponse(`تم تنفيذ **/${mode}** على <#${channelId}>.`) : interactionResponse("تعذر تعديل صلاحيات القناة. تحقق من رتبة Glow.", { ephemeral: true });
+}
+
+async function slowmodeInfo(payload: DiscordInteractionPayload) {
+  const guildId = payload.guild_id;
+  const channelId = payload.channel_id;
+  const seconds = Math.max(0, Math.min(21_600, Number(interactionOption<number>(payload, "seconds") ?? 0)));
+  if (!guildId || !channelId) return interactionResponse("هذا الأمر يعمل داخل قناة السيرفر فقط.", { ephemeral: true });
+  if (!hasPermission(payload, 0x2000n)) return permissionDenied();
+  const ok = await updateGuildChannel(channelId, { rate_limit_per_user: seconds }, "Glow slowmode command");
+  return ok ? interactionResponse(seconds ? `تم تفعيل Slowmode لمدة **${seconds} ثانية**.` : "تم تعطيل Slowmode.") : interactionResponse("تعذر تعديل Slowmode.", { ephemeral: true });
+}
+
+async function inRoleInfo(payload: DiscordInteractionPayload) {
+  const guildId = payload.guild_id;
+  const roleId = interactionOption<string>(payload, "role");
+  if (!guildId || !roleId) return interactionResponse("اختر رولاً داخل السيرفر.", { ephemeral: true });
+  const members = (await fetchGuildMembers(guildId)).filter((member) => member.roles?.includes(roleId));
+  if (!members.length) return interactionResponse("لا يوجد أعضاء بهذا الرول حالياً.", { ephemeral: true });
+  const rows = members.slice(0, 30).map((member) => `• <@${member.user.id}>`).join("\n");
+  return interactionResponse(`**أعضاء الرول (${members.length})**\n${rows}${members.length > 30 ? `\n… و ${members.length - 30} عضو إضافي.` : ""}`);
+}
+
+async function moveInfo(payload: DiscordInteractionPayload, user: InteractionUser) {
+  const guildId = payload.guild_id;
+  const targetId = interactionOption<string>(payload, "member");
+  const channelId = interactionOption<string>(payload, "channel");
+  if (!guildId || !targetId || !channelId) return interactionResponse("اختر العضو والروم الصوتي.", { ephemeral: true });
+  if (!hasPermission(payload, 0x1000000n)) return permissionDenied();
+  const channel = (await fetchGuildChannels(guildId)).find((item) => item.id === channelId && (item.type === 2 || item.type === 13));
+  if (!channel) return interactionResponse("اختر رومًا صوتيًا صالحًا.", { ephemeral: true });
+  const ok = await updateGuildMember(guildId, targetId, { channel_id: channelId }, `Glow move by ${user.id}`);
+  return ok ? interactionResponse(`تم نقل <@${targetId}> إلى <#${channelId}>.`) : interactionResponse("تعذر نقل العضو. تأكد من وجوده في روم صوتي وصلاحيات Glow.", { ephemeral: true });
+}
+
+async function muteCheckInfo(payload: DiscordInteractionPayload) {
+  const guildId = payload.guild_id;
+  const targetId = interactionOption<string>(payload, "member");
+  if (!guildId || !targetId) return interactionResponse("اختر عضواً داخل السيرفر.", { ephemeral: true });
+  const member = await fetchGuildMember(guildId, targetId);
+  if (!member) return interactionResponse("تعذر العثور على العضو.", { ephemeral: true });
+  const until = member.communication_disabled_until ? new Date(member.communication_disabled_until) : null;
+  return interactionResponse(until && until.getTime() > Date.now() ? `العضو <@${targetId}> عليه Timeout حتى <t:${Math.floor(until.getTime() / 1000)}:F>.` : `العضو <@${targetId}> ليس عليه Timeout حالياً.`);
+}
+
+async function roleInfo(payload: DiscordInteractionPayload, user: InteractionUser) {
+  const guildId = payload.guild_id;
+  const targetId = interactionOption<string>(payload, "member");
+  const roleId = interactionOption<string>(payload, "role");
+  const action = interactionOption<string>(payload, "action") === "remove" ? "remove" : "add";
+  if (!guildId || !targetId || !roleId) return interactionResponse("اختر العضو والرول.", { ephemeral: true });
+  if (!hasPermission(payload, 0x10000000n)) return permissionDenied();
+  const role = (await fetchGuildRoles(guildId)).find((item) => item.id === roleId && !item.managed && item.id !== guildId);
+  if (!role) return interactionResponse("الرول غير صالح أو مُدار من Discord.", { ephemeral: true });
+  const ok = action === "add" ? await addGuildMemberRole(guildId, targetId, roleId, `Glow role add by ${user.id}`) : await removeGuildMemberRole(guildId, targetId, roleId, `Glow role remove by ${user.id}`);
+  return ok ? interactionResponse(`${action === "add" ? "تمت إضافة" : "تمت إزالة"} الرول **${role.name}** ${action === "add" ? "إلى" : "من"} <@${targetId}>.`) : interactionResponse("تعذر تعديل الرول. تحقق من ترتيب الرتب.", { ephemeral: true });
+}
+
+async function rarInfo(payload: DiscordInteractionPayload, user: InteractionUser) {
+  const guildId = payload.guild_id;
+  const targetId = interactionOption<string>(payload, "member");
+  if (!guildId || !targetId) return interactionResponse("اختر عضواً داخل السيرفر.", { ephemeral: true });
+  if (!hasPermission(payload, 0x10000000n)) return permissionDenied();
+  const member = await fetchGuildMember(guildId, targetId);
+  if (!member) return interactionResponse("تعذر العثور على العضو.", { ephemeral: true });
+  const roles = await fetchGuildRoles(guildId);
+  const removable = roles.filter((role) => !role.managed && role.id !== guildId && member.roles?.includes(role.id));
+  let removed = 0;
+  for (const role of removable) if (await removeGuildMemberRole(guildId, targetId, role.id, `Glow rar by ${user.id}`)) removed += 1;
+  return interactionResponse(`تمت إزالة **${removed}** رول من <@${targetId}>.`);
+}
+
+async function setNickInfo(payload: DiscordInteractionPayload, user: InteractionUser) {
+  const guildId = payload.guild_id;
+  const targetId = interactionOption<string>(payload, "member");
+  const nickname = interactionOption<string>(payload, "nickname")?.trim() || null;
+  if (!guildId || !targetId) return interactionResponse("اختر عضواً داخل السيرفر.", { ephemeral: true });
+  if (!hasPermission(payload, 0x8000000n)) return permissionDenied();
+  const ok = await updateGuildMember(guildId, targetId, { nick: nickname }, `Glow setnick by ${user.id}`);
+  return ok ? interactionResponse(nickname ? `تم تغيير اسم <@${targetId}> إلى **${nickname}**.` : `تمت إزالة الاسم المستعار من <@${targetId}>.`) : interactionResponse("تعذر تغيير الاسم المستعار. تحقق من ترتيب الرتب.", { ephemeral: true });
+}
+
+async function voiceKickInfo(payload: DiscordInteractionPayload, user: InteractionUser) {
+  const guildId = payload.guild_id;
+  const targetId = interactionOption<string>(payload, "member");
+  if (!guildId || !targetId) return interactionResponse("اختر عضواً داخل السيرفر.", { ephemeral: true });
+  if (!hasPermission(payload, 0x1000000n)) return permissionDenied();
+  const ok = await updateGuildMember(guildId, targetId, { channel_id: null }, `Glow vkick by ${user.id}`);
+  return ok ? interactionResponse(`تم فصل <@${targetId}> من الروم الصوتي.`) : interactionResponse("تعذر فصل العضو أو أنه غير متصل صوتياً.", { ephemeral: true });
+}
+
+async function warnRemoveInfo(payload: DiscordInteractionPayload) {
+  const guildId = payload.guild_id;
+  const targetId = interactionOption<string>(payload, "member");
+  if (!guildId) return interactionResponse("هذا الأمر يعمل داخل السيرفر فقط.", { ephemeral: true });
+  if (!hasPermission(payload, 0x20n)) return permissionDenied();
+  const database = await db();
+  let query = database.from("moderation_cases").delete().eq("guild_id", guildId).eq("action", "warn");
+  if (targetId) query = query.eq("target_id", targetId);
+  const { error } = await query;
+  return error ? interactionResponse("تعذر إزالة التحذيرات.", { ephemeral: true }) : interactionResponse(targetId ? `تمت إزالة تحذيرات <@${targetId}>.` : "تمت إزالة تحذيرات السيرفر بالكامل.");
+}
+
+async function pointsInfo(payload: DiscordInteractionPayload, user: InteractionUser) {
+  const targetId = interactionOption<string>(payload, "member");
+  const amount = Math.max(0, Math.min(1_000_000_000, Number(interactionOption<number>(payload, "amount") ?? 0)));
+  const action = interactionOption<string>(payload, "action") ?? "add";
+  if (!payload.guild_id || !targetId) return interactionResponse("اختر عضواً داخل السيرفر.", { ephemeral: true });
+  if (!hasPermission(payload, 0x20n)) return permissionDenied();
+  const database = await db();
+  const { data: wallet } = await database.from("glow_wallets").select("balance, total_earned").eq("user_id", targetId).maybeSingle();
+  const current = Number(wallet?.balance ?? 0);
+  const next = action === "set" ? amount : action === "remove" ? Math.max(0, current - amount) : current + amount;
+  const { error } = await database.from("glow_wallets").upsert({ user_id: targetId, balance: next, total_earned: Number(wallet?.total_earned ?? 0), updated_at: new Date().toISOString() }, { onConflict: "user_id" });
+  if (error) return interactionResponse("تعذر تحديث الرصيد.", { ephemeral: true });
+  await database.from("glow_transactions").insert({ user_id: targetId, amount: next - current, kind: "admin_adjustment", note: `Glow points adjustment by ${user.id}` });
+  return interactionResponse(`تم تحديث رصيد <@${targetId}> إلى **${next} Glow**.`);
+}
+
+async function pointsResetInfo(payload: DiscordInteractionPayload) {
+  const targetId = interactionOption<string>(payload, "member");
+  if (!payload.guild_id) return interactionResponse("هذا الأمر يعمل داخل السيرفر فقط.", { ephemeral: true });
+  if (!targetId) return interactionResponse("اختر عضواً محدداً؛ أرصدة Glow مشتركة وليست معزولة حسب السيرفر.", { ephemeral: true });
+  if (!hasPermission(payload, 0x20n)) return permissionDenied();
+  const database = await db();
+  const { error } = await database
+    .from("glow_wallets")
+    .update({ balance: 0, total_earned: 0, streak: 0, last_daily_at: null, updated_at: new Date().toISOString() })
+    .eq("user_id", targetId);
+  return error
+    ? interactionResponse("تعذر إعادة تعيين الرصيد.", { ephemeral: true })
+    : interactionResponse(`تمت إعادة تعيين رصيد <@${targetId}>.`);
+}
+
 async function helpInfo() {
   return interactionResponse(
     "**أوامر Glow**\n`/server` معلومات السيرفر · `/roles` رولات السيرفر · `/colors` ألوان الرولات · `/server-avatar` صورة السيرفر · `/server-banner` بانر السيرفر · `/user` معلومات عضو · `/avatar` صورة عضو · `/banner` بانر عضو\n`/rank` اللفل وXP · `/top` الصدارة · `/leaderboard` الصدارة · `/suggest` اقتراح\n`/clear` تنظيف · `/kick` طرد · `/ban` حظر · `/unban` رفع حظر · `/timeout` تايم أوت · `/untimeout` إلغاء تايم أوت · `/warn-add` تحذير · `/warnings` التحذيرات\n`/daily` مكافأة Glow · `/balance` الرصيد · `/points-list` النقاط · `/roll` نرد · `/profile` الملف · `/ping` حالة Glow · `/glow` رابط الداشبورد",
@@ -615,6 +874,27 @@ export async function handleDiscordInteraction(payload: DiscordInteractionPayloa
   const command = payload.data?.name;
   if (!user || !command) return interactionResponse("تعذر قراءة الأمر.", { ephemeral: true });
 
+  if (command === "get-emojis") return getEmojisInfo(payload);
+  if (command === "color-set") return colorSetInfo(payload, user);
+  if (command === "invites") return invitesInfo(payload);
+  if (command === "reset") return resetLevelInfo(payload);
+  if (command === "setlevel") return setLevelInfo(payload);
+  if (command === "setxp") return setXpInfo(payload);
+  if (command === "hide") return channelVisibilityInfo(payload, "hide");
+  if (command === "show") return channelVisibilityInfo(payload, "show");
+  if (command === "lock") return channelVisibilityInfo(payload, "lock");
+  if (command === "unlock") return channelVisibilityInfo(payload, "unlock");
+  if (command === "slowmode") return slowmodeInfo(payload);
+  if (command === "inrole") return inRoleInfo(payload);
+  if (command === "move") return moveInfo(payload, user);
+  if (command === "mute-check") return muteCheckInfo(payload);
+  if (command === "role") return roleInfo(payload, user);
+  if (command === "rar") return rarInfo(payload, user);
+  if (command === "setnick") return setNickInfo(payload, user);
+  if (command === "vkick") return voiceKickInfo(payload, user);
+  if (command === "warn-remove") return warnRemoveInfo(payload);
+  if (command === "points") return pointsInfo(payload, user);
+  if (command === "points-reset") return pointsResetInfo(payload);
   if (command === "daily") return daily(user);
   if (command === "balance")
     return balance(user, interactionOption<string>(payload, "user") ?? user.id);

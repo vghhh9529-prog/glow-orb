@@ -992,6 +992,13 @@ function CommandsModulePage({
   const disabled = Array.isArray(rawDisabled)
     ? rawDisabled.filter((item): item is string => typeof item === "string")
     : [];
+  const rawColorRoleIds = config["colorRoleIds"];
+  const colorRoleIds = Array.isArray(rawColorRoleIds)
+    ? rawColorRoleIds.filter((item): item is string => typeof item === "string")
+    : [];
+  const colorRoles = (workspace.roles ?? [])
+    .filter((role) => !role.managed && Number(role.color ?? 0) > 0)
+    .sort((a, b) => Number(b.color ?? 0) - Number(a.color ?? 0));
   const filtered = useMemo(() => {
     const normalized = query.trim().toLowerCase();
     return COMMAND_CATALOG.filter((command) => {
@@ -1014,6 +1021,13 @@ function CommandsModulePage({
       ? disabled.filter((item) => item !== name)
       : Array.from(new Set([...disabled, name]));
     setConfig({ ...config, disabled: nextDisabled });
+  }
+
+  function setColorRoleEnabled(roleId: string, nextEnabled: boolean) {
+    const nextIds = nextEnabled
+      ? Array.from(new Set([...colorRoleIds, roleId])).slice(0, 50)
+      : colorRoleIds.filter((item) => item !== roleId);
+    setConfig({ ...config, colorRoleIds: nextIds });
   }
 
   return (
@@ -1055,6 +1069,60 @@ function CommandsModulePage({
             </button>
           ))}
         </div>
+        <Card className="mt-5 border-primary/15 bg-gradient-to-r from-primary/5 via-background/20 to-accent/5 p-4">
+          <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.16em] text-primary">{t("تخصيص سريع", "Quick customization")}</p>
+              <p className="mt-1 text-sm font-semibold text-foreground">{t("الأوامر التي تحتاج إعداداً خاصاً", "Commands with dedicated setup")}</p>
+            </div>
+            <span className="text-xs text-muted-foreground">{t("اضبط النظام ثم فعّل الأمر من الأعلى", "Configure the system, then enable its command above")}</span>
+          </div>
+          <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {[
+              ["moderation", Ban, t("أدوات الإشراف", "Moderation tools")],
+              ["automod", Shield, t("قواعد AutoMod", "AutoMod rules")],
+              ["logging", FileText, t("اللوقات", "Advanced logs")],
+              ["leveling", Trophy, t("الليفل والمكافآت", "Levels & rewards")],
+              ["tickets", Ticket, t("التذاكر", "Ticket workflow")],
+              ["messageguard", MessageSquareOff, t("حارس الرسائل", "Message Guard")],
+            ].map(([section, Icon, label]) => (
+              <Button key={String(section)} asChild variant="outline" size="sm" className="justify-start gap-2.5 bg-background/25 text-start">
+                <Link to="/dashboard/$guildId/$section" params={{ guildId, section: String(section) }}>
+                  {typeof Icon === "function" ? <Icon className="size-4 text-primary" /> : null}
+                  <span>{String(label)}</span>
+                </Link>
+              </Button>
+            ))}
+          </div>
+          <div className="mt-4 rounded-2xl border border-border/50 bg-background/20 p-4">
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm font-bold text-foreground">{t("لوحة رتب الألوان", "Color-role palette")}</p>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">{t("اختر الرتب التي يديرها /color-set فقط. لن يزيل Glow أي رتبة خارج هذه القائمة.", "Choose only the roles managed by /color-set. Glow will never remove roles outside this list.")}</p>
+              </div>
+              <Badge variant="secondary" className="w-fit text-[10px]">{colorRoleIds.length}/50</Badge>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {colorRoles.slice(0, 50).map((role) => {
+                const selected = colorRoleIds.includes(role.id);
+                const color = `#${Number(role.color ?? 0).toString(16).padStart(6, "0")}`;
+                return (
+                  <button
+                    key={role.id}
+                    type="button"
+                    onClick={() => setColorRoleEnabled(role.id, !selected)}
+                    className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition duration-200 active:scale-[0.97] ${selected ? "border-primary/50 bg-primary/12 text-foreground" : "border-border/60 bg-background/30 text-muted-foreground hover:border-primary/30 hover:text-foreground"}`}
+                  >
+                    <span className="size-2.5 rounded-full ring-2 ring-background" style={{ backgroundColor: color }} />
+                    {role.name}
+                    {selected ? <Check className="size-3.5 text-primary" /> : null}
+                  </button>
+                );
+              })}
+              {colorRoles.length === 0 ? <span className="text-xs text-muted-foreground">{t("لا توجد رتب ألوان قابلة للإدارة.", "No manageable color roles found.")}</span> : null}
+            </div>
+          </div>
+        </Card>
         <div className="mt-5 grid gap-3 md:grid-cols-2">
           {filtered.map((command) => {
             const live = command.supported;

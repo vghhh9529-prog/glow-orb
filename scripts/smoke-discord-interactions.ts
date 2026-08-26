@@ -31,6 +31,27 @@ const required = [
   "user",
   "avatar",
   "help",
+  "get-emojis",
+  "color-set",
+  "invites",
+  "reset",
+  "setlevel",
+  "setxp",
+  "hide",
+  "show",
+  "lock",
+  "unlock",
+  "slowmode",
+  "inrole",
+  "move",
+  "mute-check",
+  "role",
+  "rar",
+  "setnick",
+  "vkick",
+  "warn-remove",
+  "points",
+  "points-reset",
 ] as const;
 const names = SLASH_COMMANDS.map((command) => command.name);
 if (names.length !== required.length) {
@@ -74,4 +95,35 @@ if (
   throw new Error("/help smoke response is invalid");
 }
 
-console.log(`[Glow Test] ${names.length} slash commands registered and /help response passed`);
+const deniedResponse = await handleDiscordInteraction(
+  {
+    type: 2,
+    guild_id: "test-guild",
+    channel_id: "test-channel",
+    member: { user: { id: "test-user", username: "tester" }, permissions: "0" },
+    data: { name: "clear", options: [{ name: "amount", value: 10 }] },
+  },
+  "https://example.test",
+);
+const deniedBody = (await deniedResponse.json()) as { type?: number; data?: { content?: string; embeds?: Array<{ description?: string }> } };
+const deniedText = deniedBody.data?.embeds?.[0]?.description ?? deniedBody.data?.content ?? "";
+if (deniedBody.type !== 4 || !deniedText.includes("صلاحية")) {
+  throw new Error("Permission denial smoke response is invalid");
+}
+
+const invalidResponse = await handleDiscordInteraction(
+  {
+    type: 2,
+    guild_id: "test-guild",
+    member: { user: { id: "test-user", username: "tester" }, permissions: "8" },
+    data: { name: "points-reset", options: [] },
+  },
+  "https://example.test",
+);
+const invalidBody = (await invalidResponse.json()) as { type?: number; data?: { content?: string; embeds?: Array<{ description?: string }> } };
+const invalidText = invalidBody.data?.embeds?.[0]?.description ?? invalidBody.data?.content ?? "";
+if (invalidBody.type !== 4 || !invalidText.includes("اختر عضواً")) {
+  throw new Error("Invalid option smoke response is invalid");
+}
+
+console.log(`[Glow Test] ${names.length} slash commands registered; /help, permission denial, and invalid-option responses passed`);

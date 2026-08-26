@@ -39,6 +39,7 @@ export interface DiscordChannel {
   parent_id: string | null;
   position: number;
   guild_id?: string;
+  permission_overwrites?: Array<{ id: string; type: number; allow?: string; deny?: string }>;
 }
 
 async function botFetch<T>(path: string): Promise<T | null> {
@@ -201,6 +202,7 @@ export async function fetchGuildMember(guildId: string, userId: string) {
     user?: { id: string; username: string; global_name?: string | null; avatar?: string | null };
     joined_at?: string;
     roles?: string[];
+    communication_disabled_until?: string | null;
   }>(`/guilds/${guildId}/members/${userId}`);
 }
 
@@ -393,4 +395,85 @@ export async function deleteAutoModRule(guildId: string, ruleId: string) {
     headers: { Authorization: `Bot ${botToken()}` },
   });
   return res.ok;
+}
+
+
+export async function fetchGuildEmojis(guildId: string) {
+  return (await botFetch<Array<{ id: string; name: string | null; animated?: boolean }>>(`/guilds/${guildId}/emojis`)) ?? [];
+}
+
+export async function fetchGuildInvites(guildId: string) {
+  return (await botFetch<Array<{ code: string; uses?: number; max_uses?: number; inviter?: { username?: string }; channel?: { name?: string } }>>(`/guilds/${guildId}/invites`)) ?? [];
+}
+
+export async function fetchGuildMembers(guildId: string, limit = 1000) {
+  return (await botFetch<Array<{ user: { id: string; username: string; global_name?: string | null; bot?: boolean }; nick?: string | null; roles?: string[]; deaf?: boolean; mute?: boolean; communication_disabled_until?: string | null }>>(`/guilds/${guildId}/members?limit=${Math.min(1000, Math.max(1, limit))}`)) ?? [];
+}
+
+export async function updateGuildChannel(
+  channelId: string,
+  patch: { permission_overwrites?: Array<{ id: string; type: 0; allow?: string; deny?: string }>; rate_limit_per_user?: number },
+  reason: string,
+) {
+  const res = await fetch(`${API}/channels/${channelId}`, {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bot ${botToken()}`,
+      "Content-Type": "application/json",
+      "X-Audit-Log-Reason": reason.slice(0, 400),
+    },
+    body: JSON.stringify(patch),
+  });
+  return res.ok;
+}
+
+export async function updateGuildMember(
+  guildId: string,
+  userId: string,
+  patch: { nick?: string | null; channel_id?: string | null },
+  reason: string,
+) {
+  const res = await fetch(`${API}/guilds/${guildId}/members/${userId}`, {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bot ${botToken()}`,
+      "Content-Type": "application/json",
+      "X-Audit-Log-Reason": reason.slice(0, 400),
+    },
+    body: JSON.stringify(patch),
+  });
+  return res.ok;
+}
+
+export async function addGuildMemberRole(guildId: string, userId: string, roleId: string, reason: string) {
+  const res = await fetch(`${API}/guilds/${guildId}/members/${userId}/roles/${roleId}`, {
+    method: "PUT",
+    headers: { Authorization: `Bot ${botToken()}`, "X-Audit-Log-Reason": reason.slice(0, 400) },
+  });
+  return res.ok;
+}
+
+export async function removeGuildMemberRole(guildId: string, userId: string, roleId: string, reason: string) {
+  const res = await fetch(`${API}/guilds/${guildId}/members/${userId}/roles/${roleId}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bot ${botToken()}`, "X-Audit-Log-Reason": reason.slice(0, 400) },
+  });
+  return res.ok;
+}
+
+export async function deleteGuildRole(guildId: string, roleId: string, reason: string) {
+  const res = await fetch(`${API}/guilds/${guildId}/roles/${roleId}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bot ${botToken()}`, "X-Audit-Log-Reason": reason.slice(0, 400) },
+  });
+  return res.ok;
+}
+
+export async function getGuildBans(guildId: string) {
+  return (await botFetch<Array<{ user: { id: string; username: string } }>>(`/guilds/${guildId}/bans?limit=1000`)) ?? [];
+}
+
+export async function clearGuildXp(guildId: string, userId?: string) {
+  // This helper is intentionally kept out of the REST layer; callers update the scoped Supabase rows.
+  return { guildId, userId };
 }

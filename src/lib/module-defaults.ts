@@ -202,6 +202,7 @@ export const MODULE_DEFAULTS: Record<ModuleKey, Record<string, unknown>> = {
   },
   commands: {
     disabled: [] as string[],
+    colorRoleIds: [] as string[],
   },
 };
 
