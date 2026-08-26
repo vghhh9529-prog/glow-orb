@@ -170,6 +170,19 @@ export interface ScammerReport {
   roleAssignmentError: string | null;
 }
 
+function scamSubmissionError(error: unknown, t: (arabic: string, english: string) => string) {
+  const code = error instanceof Error ? (error.message.split(":")[0] ?? "") : "";
+  if (code === "UNAUTHENTICATED") return t("انتهت الجلسة، سجل الدخول من جديد.", "Your session expired. Please sign in again.");
+  if (code === "FORBIDDEN") return t("لا تملك صلاحية إدارة هذا السيرفر.", "You cannot manage this server.");
+  if (code === "STORAGE_NOT_READY" || code === "STORAGE_UPLOAD_FAILED") return t("التخزين غير جاهز حالياً. تأكد من إعداد Supabase Storage.", "Evidence storage is not ready. Check Supabase Storage settings.");
+  if (code === "INVALID_IMAGE_TYPE" || code === "IMAGE_TOO_LARGE") return t("نوع أو حجم إحدى الصور غير صالح.", "One of the images has an invalid type or size.");
+  if (code === "EVIDENCE_NOT_FOUND") return t("تعذر العثور على إحدى الصور المرفوعة. أعد رفعها.", "One uploaded image could not be found. Please upload it again.");
+  if (code === "INVALID_DISCORD_ID") return t("معرّف Discord غير صالح.", "The Discord ID is invalid.");
+  if (code === "INVALID_DESCRIPTION") return t("اكتب شرحاً لا يقل عن 20 حرفاً.", "The explanation must be at least 20 characters.");
+  if (code.includes("SCAM_REPORT") || code.includes("PGRST")) return t("قاعدة بيانات البلاغات غير جاهزة بعد. أعد تشغيل النسخة الأخيرة.", "The scam report database is not ready yet. Restart the latest deployment.");
+  return t("لم يكتمل الإرسال. راجع البيانات وحاول مرة أخرى.", "The submission did not complete. Check the details and try again.");
+}
+
 export interface GuildOverview {
   topMembers: Array<{
     user_id: string;
@@ -2087,7 +2100,7 @@ function ScammersPage({ guildId }: { guildId: string }) {
       );
       void qc.invalidateQueries({ queryKey: ["scammer-directory", guildId] });
     },
-    onError: (error: Error) => toast.error(error.message === "FORBIDDEN" ? t("لا تملك صلاحية هذا السيرفر", "You cannot manage this server") : t("تعذر تقديم البلاغ", "Could not submit the report")),
+    onError: (error: unknown) => toast.error(scamSubmissionError(error, t)),
   });
 
   useEffect(() => {
@@ -2159,7 +2172,7 @@ function ScammersPage({ guildId }: { guildId: string }) {
               <div className={`rounded-2xl border p-4 ${submitted ? "border-success/35 bg-success/10 text-success" : "border-destructive/35 bg-destructive/10 text-destructive"} ${submitted ? "animate-report-success" : ""}`}>
                 <div className="flex items-start gap-3">
                   {submitted ? <Check className="mt-0.5 size-5 shrink-0" /> : <AlertTriangle className="mt-0.5 size-5 shrink-0" />}
-                  <p className="text-sm leading-6">{submitted ? t("تم استلام البلاغ وسيتم فحصه من إدارة Glow قبل نشره.", "Your report was received and will be checked by Glow administrators before publication.") : t("لم يكتمل الإرسال. راجع البيانات وحاول مرة أخرى.", "The submission did not complete. Check the details and try again.")}</p>
+                  <p className="text-sm leading-6">{submitted ? t("تم استلام البلاغ وسيتم فحصه من إدارة Glow قبل نشره.", "Your report was received and will be checked by Glow administrators before publication.") : scamSubmissionError(submit.error, t)}</p>
                 </div>
               </div>
             )}

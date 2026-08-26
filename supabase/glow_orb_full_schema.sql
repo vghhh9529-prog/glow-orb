@@ -116,52 +116,6 @@ CREATE INDEX IF NOT EXISTS suggestions_status_idx
 CREATE INDEX IF NOT EXISTS suggestions_author_idx
   ON public.suggestions (guild_id, author_id, created_at DESC);
 
--- -----------------------------------------------------------------------------
--- Scam reports
--- -----------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION public.set_scam_reports_updated_at()
-RETURNS trigger
-LANGUAGE plpgsql
-AS $$
-BEGIN
-  NEW.updated_at = now();
-  RETURN NEW;
-END;
-$$;
-
-CREATE TABLE IF NOT EXISTS public.scam_reports (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  guild_id text NOT NULL REFERENCES public.guilds(id) ON DELETE CASCADE,
-  reporter_id text NOT NULL,
-  reporter_name text,
-  reported_user_id text NOT NULL,
-  reported_username text,
-  reported_avatar text,
-  description text NOT NULL,
-  evidence_urls jsonb NOT NULL DEFAULT '[]'::jsonb,
-  status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
-  review_message_id text,
-  review_error text,
-  reviewed_by text,
-  reviewed_at timestamptz,
-  role_assigned boolean NOT NULL DEFAULT false,
-  role_assignment_error text,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now()
-);
-
-CREATE INDEX IF NOT EXISTS scam_reports_guild_status_idx
-  ON public.scam_reports (guild_id, status, created_at DESC);
-
-CREATE INDEX IF NOT EXISTS scam_reports_target_status_idx
-  ON public.scam_reports (guild_id, reported_user_id, status, created_at DESC);
-
-DROP TRIGGER IF EXISTS set_scam_reports_updated_at ON public.scam_reports;
-CREATE TRIGGER set_scam_reports_updated_at
-  BEFORE UPDATE ON public.scam_reports
-  FOR EACH ROW
-  EXECUTE FUNCTION public.set_scam_reports_updated_at();
-
 -- Leveling
 -- -----------------------------------------------------------------------------
 
@@ -324,7 +278,6 @@ ALTER TABLE public.guilds ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.guild_modules ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.guild_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.suggestions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.scam_reports ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.member_levels ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.moderation_cases ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.glow_wallets ENABLE ROW LEVEL SECURITY;
@@ -337,7 +290,6 @@ REVOKE ALL ON TABLE
   public.guild_modules,
   public.guild_items,
   public.suggestions,
-  public.scam_reports,
   public.member_levels,
   public.moderation_cases,
   public.glow_wallets,
@@ -352,7 +304,6 @@ GRANT ALL PRIVILEGES ON TABLE
   public.guild_modules,
   public.guild_items,
   public.suggestions,
-  public.scam_reports,
   public.member_levels,
   public.moderation_cases,
   public.glow_wallets,
@@ -360,7 +311,6 @@ GRANT ALL PRIVILEGES ON TABLE
 TO service_role;
 
 GRANT EXECUTE ON FUNCTION public.set_updated_at() TO service_role;
-GRANT EXECUTE ON FUNCTION public.set_scam_reports_updated_at() TO service_role;
 GRANT EXECUTE ON FUNCTION public.delete_expired_app_sessions() TO service_role;
 
 ALTER DEFAULT PRIVILEGES IN SCHEMA public
@@ -369,7 +319,7 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public
 COMMIT;
 
 -- -----------------------------------------------------------------------------
--- Verification query: should return exactly these 11 public tables.
+-- Verification query: should return exactly these 10 public tables.
 -- -----------------------------------------------------------------------------
 
 SELECT table_name
@@ -382,7 +332,6 @@ WHERE table_schema = 'public'
     'guild_modules',
     'guild_items',
     'suggestions',
-    'scam_reports',
     'member_levels',
     'moderation_cases',
     'glow_wallets',

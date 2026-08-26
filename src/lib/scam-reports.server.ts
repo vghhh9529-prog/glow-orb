@@ -6,6 +6,7 @@ import type { Json } from "@/integrations/supabase/types";
 export const SCAM_REVIEW_CHANNEL_ID = "1542130215713509437";
 export const SCAMMER_ROLE_ID = "1542129398830866523";
 export const SCAM_EVIDENCE_BUCKET = "scam-evidence";
+const SCAM_REPORT_KIND = "scam_reports";
 const MAX_EVIDENCE_FILES = 5;
 const MAX_EVIDENCE_BYTES = 5 * 1024 * 1024;
 const MAX_DESCRIPTION = 5000;
@@ -15,26 +16,31 @@ const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/gif", "im
 
 type StoredEvidence = { key: string; name: string; type: string; size: number };
 type EvidenceRecord = StoredEvidence & { url: string };
+type ScamStatus = "pending" | "approved" | "rejected";
+
+type ScamReportData = {
+  reporterId: string;
+  reporterName: string | null;
+  reportedUserId: string;
+  reportedUsername: string | null;
+  reportedAvatar: string | null;
+  description: string;
+  evidence: StoredEvidence[];
+  status: ScamStatus;
+  reviewMessageId: string | null;
+  reviewError: string | null;
+  reviewedBy: string | null;
+  reviewedAt: string | null;
+  roleAssigned: boolean;
+  roleAssignmentError: string | null;
+  createdAt: string;
+};
 
 type ScamReportRow = {
   id: string;
   guild_id: string;
-  reporter_id: string;
-  reporter_name: string | null;
-  reported_user_id: string;
-  reported_username: string | null;
-  reported_avatar: string | null;
-  description: string;
-  evidence_urls: Json;
-  status: string;
-  review_message_id: string | null;
-  review_error: string | null;
-  reviewed_by: string | null;
-  reviewed_at: string | null;
-  role_assigned: boolean;
-  role_assignment_error: string | null;
-  created_at: string;
-  updated_at: string;
+  name: string;
+  data: ScamReportData;
 };
 
 async function database() {
@@ -49,6 +55,7 @@ function assertDiscordId(value: string) {
 function assertEvidenceKey(key: string, guildId: string) {
   if (
     key.length > 220 ||
+    key !== key.trim() ||
     !key.startsWith(`${guildId}/`) ||
     !/^[0-9]{15,20}\/[a-f0-9-]{36}\.(jpg|jpeg|png|gif|webp)$/i.test(key)
   ) {
@@ -67,32 +74,66 @@ function readStoredEvidence(value: Json): StoredEvidence[] {
       typeof record["type"] !== "string" ||
       typeof record["size"] !== "number"
     ) return [];
-    return [{
-      key: record["key"],
-      name: record["name"],
-      type: record["type"],
-      size: record["size"],
-    }];
+    return [{ key: record["key"], name: record["name"], type: record["type"], size: record["size"] }];
   });
 }
 
+function readScamReportData(value: Json): ScamReportData | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, Json | undefined>;
+  const status = record["status"];
+  if (
+    typeof record["reporterId"] !== "string" ||
+    typeof record["reportedUserId"] !== "string" ||
+    typeof record["description"] !== "string" ||
+    (status !== "pending" && status !== "approved" && status !== "rejected") ||
+    typeof record["createdAt"] !== "string"
+  ) return null;
+  return {
+    reporterId: record["reporterId"],
+    reporterName: typeof record["reporterName"] === "string" ? record["reporterName"] : null,
+    reportedUserId: record["reportedUserId"],
+    reportedUsername: typeof record["reportedUsername"] === "string" ? record["reportedUsername"] : null,
+    reportedAvatar: typeof record["reportedAvatar"] === "string" ? record["reportedAvatar"] : null,
+    description: record["description"],
+    evidence: readStoredEvidence(record["evidence"] ?? []),
+    status,
+    reviewMessageId: typeof record["reviewMessageId"] === "string" ? record["reviewMessageId"] : null,
+    reviewError: typeof record["reviewError"] === "string" ? record["reviewError"] : null,
+    reviewedBy: typeof record["reviewedBy"] === "string" ? record["reviewedBy"] : null,
+    reviewedAt: typeof record["reviewedAt"] === "string" ? record["reviewedAt"] : null,
+    roleAssigned: record["roleAssigned"] === true,
+    roleAssignmentError: typeof record["roleAssignmentError"] === "string" ? record["roleAssignmentError"] : null,
+    createdAt: record["createdAt"],
+  };
+}
+
+function toJson(data: ScamReportData) {
+  return data as unknown as Json;
+}
+
 async function ensureEvidenceBucket() {
-  const db = await database();
-  const { data: buckets, error: listError } = await db.storage.listBuckets();
-  if (listError) throw listError;
-  const current = buckets?.find((bucket) => bucket.id === SCAM_EVIDENCE_BUCKET);
-  if (!current) {
-    const { error } = await db.storage.createBucket(SCAM_EVIDENCE_BUCKET, {
-      public: false,
-      fileSizeLimit: MAX_EVIDENCE_BYTES,
-      allowedMimeTypes: Array.from(ALLOWED_IMAGE_TYPES),
-    });
-    if (error && !/already exists/i.test(error.message)) throw error;
-  } else if (current.public) {
-    const { error } = await db.storage.updateBucket(SCAM_EVIDENCE_BUCKET, { public: false });
-    if (error) throw error;
+  try {
+    const db = await database();
+    const { data: buckets, error: listError } = await db.storage.listBuckets();
+    if (listError) throw listError;
+    const current = buckets?.find((bucket) => bucket.id === SCAM_EVIDENCE_BUCKET);
+    if (!current) {
+      const { error } = await db.storage.createBucket(SCAM_EVIDENCE_BUCKET, {
+        public: false,
+        fileSizeLimit: MAX_EVIDENCE_BYTES,
+        allowedMimeTypes: Array.from(ALLOWED_IMAGE_TYPES),
+      });
+      if (error && !/already exists/i.test(error.message)) throw error;
+    } else if (current.public) {
+      const { error } = await db.storage.updateBucket(SCAM_EVIDENCE_BUCKET, { public: false });
+      if (error) throw error;
+    }
+    return db;
+  } catch (error) {
+    console.error("[Glow Scam Reports] Storage bucket unavailable", error);
+    throw new Error("STORAGE_NOT_READY");
   }
-  return db;
 }
 
 async function signEvidence(db: Awaited<ReturnType<typeof database>>, item: StoredEvidence): Promise<EvidenceRecord | null> {
@@ -114,29 +155,33 @@ export async function uploadScamEvidence(guildId: string, file: File) {
     cacheControl: "31536000",
     upsert: false,
   });
-  if (error) throw error;
+  if (error) {
+    console.error("[Glow Scam Reports] Evidence upload failed", error);
+    throw new Error("STORAGE_UPLOAD_FAILED");
+  }
   return { key, name: file.name.slice(0, 120), type: file.type, size: file.size } satisfies StoredEvidence;
 }
 
 async function postReviewMessage(report: ScamReportRow, guildName: string) {
-  const db = await ensureEvidenceBucket();
-  const storedEvidence = readStoredEvidence(report.evidence_urls);
-  const evidence = (await Promise.all(storedEvidence.slice(0, MAX_EVIDENCE_FILES).map((item) => signEvidence(db, item)))).filter((item): item is EvidenceRecord => Boolean(item));
+  const db = report.data.evidence.length > 0 ? await ensureEvidenceBucket() : null;
+  const evidence = db
+    ? (await Promise.all(report.data.evidence.slice(0, MAX_EVIDENCE_FILES).map((item) => signEvidence(db, item)))).filter((item): item is EvidenceRecord => Boolean(item))
+    : [];
   const embeds: Array<Record<string, unknown>> = [
     {
       title: "Glow Scam Report · Pending Review",
-      description: report.description.slice(0, 4000),
+      description: report.data.description.slice(0, 4000),
       color: 0xf59e0b,
       fields: [
-        { name: "Reported user ID", value: `\`${report.reported_user_id}\``, inline: true },
-        { name: "Reported account", value: report.reported_username ? `${report.reported_username}\n<@${report.reported_user_id}>` : `<@${report.reported_user_id}>`, inline: true },
+        { name: "Reported user ID", value: `\`${report.data.reportedUserId}\``, inline: true },
+        { name: "Reported account", value: report.data.reportedUsername ? `${report.data.reportedUsername}\n<@${report.data.reportedUserId}>` : `<@${report.data.reportedUserId}>`, inline: true },
         { name: "Source server", value: `${guildName}\n\`${report.guild_id}\``, inline: true },
-        { name: "Reporter", value: `${report.reporter_name ?? "Dashboard member"}\n\`${report.reporter_id}\``, inline: true },
+        { name: "Reporter", value: `${report.data.reporterName ?? "Dashboard member"}\n\`${report.data.reporterId}\``, inline: true },
         { name: "Report ID", value: `\`${report.id}\``, inline: true },
         { name: "Evidence", value: evidence.length ? `${evidence.length} image(s) attached below.` : "No image evidence attached.", inline: true },
       ],
       footer: { text: "Glow Safety Review · Approve only after checking the evidence" },
-      timestamp: report.created_at,
+      timestamp: report.data.createdAt,
     },
     ...evidence.slice(0, 9).map((item) => ({ title: item.name || "Evidence", image: { url: item.url }, color: 0x334155 })),
   ];
@@ -161,6 +206,16 @@ async function postReviewMessage(report: ScamReportRow, guildName: string) {
   return body.id;
 }
 
+async function getScamItem(id: string) {
+  const db = await database();
+  const { data, error } = await db.from("guild_items").select("id, guild_id, name, data").eq("id", id).eq("kind", SCAM_REPORT_KIND).maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error("SCAM_REPORT_NOT_FOUND");
+  const parsed = readScamReportData(data.data);
+  if (!parsed) throw new Error("SCAM_REPORT_CORRUPTED");
+  return { db, row: { id: data.id, guild_id: data.guild_id, name: data.name, data: parsed } satisfies ScamReportRow };
+}
+
 export async function submitScamReport(input: { guildId: string; reportedUserId: string; description: string; evidenceKeys: string[] }) {
   const { user, guild } = await assertGuildAccess(input.guildId);
   assertDiscordId(input.guildId);
@@ -178,25 +233,39 @@ export async function submitScamReport(input: { guildId: string; reportedUserId:
   }
   const target = await fetchDiscordUser(input.reportedUserId);
   await ensureGuildRow(input.guildId, guild.name, guild.icon);
-  const { data: inserted, error } = await db.from("scam_reports").insert({
-    guild_id: input.guildId,
-    reporter_id: user.id,
-    reporter_name: user.global_name ?? user.username,
-    reported_user_id: input.reportedUserId,
-    reported_username: target?.global_name ?? target?.username ?? null,
-    reported_avatar: target?.avatar ? userAvatarUrl(input.reportedUserId, target.avatar) : null,
+  const reportData: ScamReportData = {
+    reporterId: user.id,
+    reporterName: user.global_name ?? user.username,
+    reportedUserId: input.reportedUserId,
+    reportedUsername: target?.global_name ?? target?.username ?? null,
+    reportedAvatar: target?.avatar ? userAvatarUrl(input.reportedUserId, target.avatar) : null,
     description,
-    evidence_urls: storedEvidence as unknown as Json,
-  }).select("*").single();
+    evidence: storedEvidence,
+    status: "pending",
+    reviewMessageId: null,
+    reviewError: null,
+    reviewedBy: null,
+    reviewedAt: null,
+    roleAssigned: false,
+    roleAssignmentError: null,
+    createdAt: new Date().toISOString(),
+  };
+  const { data: inserted, error } = await db.from("guild_items").insert({
+    guild_id: input.guildId,
+    kind: SCAM_REPORT_KIND,
+    name: `Scam report · ${reportData.reportedUsername ?? reportData.reportedUserId}`.slice(0, 100),
+    enabled: true,
+    data: toJson(reportData),
+  }).select("id, guild_id, name, data").single();
   if (error || !inserted) throw error ?? new Error("SCAM_REPORT_INSERT_FAILED");
-  const report = inserted as ScamReportRow;
+  const report = { id: inserted.id, guild_id: inserted.guild_id, name: inserted.name, data: reportData } satisfies ScamReportRow;
   try {
     const reviewMessageId = await postReviewMessage(report, guild.name);
-    await db.from("scam_reports").update({ review_message_id: reviewMessageId, review_error: null }).eq("id", report.id);
+    await db.from("guild_items").update({ data: toJson({ ...reportData, reviewMessageId, reviewError: null }) }).eq("id", report.id).eq("kind", SCAM_REPORT_KIND);
     return { ok: true, id: report.id, reviewQueued: true };
   } catch (error) {
     const reviewError = String(error instanceof Error ? error.message : error).slice(0, 300);
-    await db.from("scam_reports").update({ review_error: reviewError }).eq("id", report.id);
+    await db.from("guild_items").update({ data: toJson({ ...reportData, reviewError }) }).eq("id", report.id).eq("kind", SCAM_REPORT_KIND);
     return { ok: true, id: report.id, reviewQueued: false };
   }
 }
@@ -204,15 +273,17 @@ export async function submitScamReport(input: { guildId: string; reportedUserId:
 export async function listScammerDirectory(guildId: string, query = "") {
   await assertGuildAccess(guildId);
   const db = await database();
-  const { data, error } = await db.from("scam_reports").select("id, reported_user_id, reported_username, reported_avatar, description, evidence_urls, status, reporter_name, created_at, reviewed_at, role_assigned, role_assignment_error").eq("guild_id", guildId).eq("status", "approved").order("created_at", { ascending: false }).limit(500);
+  const { data, error } = await db.from("guild_items").select("id, name, data, created_at").eq("guild_id", guildId).eq("kind", SCAM_REPORT_KIND).order("created_at", { ascending: false }).limit(500);
   if (error) throw error;
   const normalized = query.trim().toLowerCase();
   const groups = new Map<string, { reportedUserId: string; username: string; avatar: string | null; reportCount: number; latestReportAt: string }>();
-  for (const row of data ?? []) {
-    const username = row.reported_username ?? row.reported_user_id;
-    const existing = groups.get(row.reported_user_id);
+  for (const item of data ?? []) {
+    const report = readScamReportData(item.data);
+    if (!report || report.status !== "approved") continue;
+    const username = report.reportedUsername ?? report.reportedUserId;
+    const existing = groups.get(report.reportedUserId);
     if (existing) { existing.reportCount += 1; continue; }
-    groups.set(row.reported_user_id, { reportedUserId: row.reported_user_id, username, avatar: row.reported_avatar, reportCount: 1, latestReportAt: row.created_at });
+    groups.set(report.reportedUserId, { reportedUserId: report.reportedUserId, username, avatar: report.reportedAvatar, reportCount: 1, latestReportAt: report.createdAt });
   }
   return Array.from(groups.values()).filter((item) => !normalized || item.reportedUserId.includes(normalized) || item.username.toLowerCase().includes(normalized));
 }
@@ -221,22 +292,26 @@ export async function listScammerReports(guildId: string, reportedUserId: string
   await assertGuildAccess(guildId);
   assertDiscordId(reportedUserId);
   const db = await database();
-  const { data, error } = await db.from("scam_reports").select("id, reported_user_id, reported_username, reported_avatar, description, evidence_urls, status, reporter_name, created_at, reviewed_at, role_assigned, role_assignment_error").eq("guild_id", guildId).eq("reported_user_id", reportedUserId).eq("status", "approved").order("created_at", { ascending: false });
+  const { data, error } = await db.from("guild_items").select("id, data").eq("guild_id", guildId).eq("kind", SCAM_REPORT_KIND).order("created_at", { ascending: false }).limit(500);
   if (error) throw error;
-  const hasEvidence = (data ?? []).some((row) => readStoredEvidence(row.evidence_urls).length > 0);
+  const rows = (data ?? []).map((item) => ({ id: item.id, report: readScamReportData(item.data) })).filter((item): item is { id: string; report: ScamReportData } => {
+    const report = item.report;
+    return report !== null && report.status === "approved" && report.reportedUserId === reportedUserId;
+  });
+  const hasEvidence = rows.some((item) => item.report.evidence.length > 0);
   const storage = hasEvidence ? await ensureEvidenceBucket() : null;
-  return Promise.all((data ?? []).map(async (row) => ({
-    id: row.id,
-    reportedUserId: row.reported_user_id,
-    username: row.reported_username ?? row.reported_user_id,
-    avatar: row.reported_avatar,
-    description: row.description,
-    evidence: storage ? (await Promise.all(readStoredEvidence(row.evidence_urls).map((item) => signEvidence(storage, item)))).filter((item): item is EvidenceRecord => Boolean(item)) : [],
-    reporterName: row.reporter_name,
-    createdAt: row.created_at,
-    reviewedAt: row.reviewed_at,
-    roleAssigned: row.role_assigned,
-    roleAssignmentError: row.role_assignment_error,
+  return Promise.all(rows.map(async ({ id, report }) => ({
+    id,
+    reportedUserId: report.reportedUserId,
+    username: report.reportedUsername ?? report.reportedUserId,
+    avatar: report.reportedAvatar,
+    description: report.description,
+    evidence: storage ? (await Promise.all(report.evidence.map((item) => signEvidence(storage, item)))).filter((item): item is EvidenceRecord => Boolean(item)) : [],
+    reporterName: report.reporterName,
+    createdAt: report.createdAt,
+    reviewedAt: report.reviewedAt,
+    roleAssigned: report.roleAssigned,
+    roleAssignmentError: report.roleAssignmentError,
   })));
 }
 
@@ -244,23 +319,26 @@ export function isScamReviewButton(customId: string) {
   return customId.startsWith("glow_scam_approve:") || customId.startsWith("glow_scam_delete:");
 }
 
-export async function reviewScamReport(reportId: string, decision: "approved" | "rejected", reviewerId: string) {
-  const db = await database();
+export async function reviewScamReport(reportId: string, decision: Exclude<ScamStatus, "pending">, reviewerId: string) {
+  const { db, row } = await getScamItem(reportId);
+  if (row.data.status !== "pending") throw new Error("SCAM_REPORT_NOT_FOUND_OR_ALREADY_REVIEWED");
   const now = new Date().toISOString();
-  const { data: report, error: claimError } = await db.from("scam_reports").update({ status: decision, reviewed_by: reviewerId, reviewed_at: now }).eq("id", reportId).eq("status", "pending").select("*").maybeSingle();
+  const nextData: ScamReportData = { ...row.data, status: decision, reviewedBy: reviewerId, reviewedAt: now };
+  const { data: claimed, error: claimError } = await db.from("guild_items").update({ enabled: decision === "approved", data: toJson(nextData) }).eq("id", reportId).eq("kind", SCAM_REPORT_KIND).contains("data", { status: "pending" }).select("id, guild_id, name, data").maybeSingle();
   if (claimError) throw claimError;
-  if (!report) throw new Error("SCAM_REPORT_NOT_FOUND_OR_ALREADY_REVIEWED");
+  if (!claimed) throw new Error("SCAM_REPORT_NOT_FOUND_OR_ALREADY_REVIEWED");
   let roleAssigned = false;
   let roleAssignmentError: string | null = null;
   if (decision === "approved") {
-    const member = await fetchGuildMember(report.guild_id, report.reported_user_id);
+    const member = await fetchGuildMember(row.guild_id, row.data.reportedUserId);
     if (!member) roleAssignmentError = "The reported user is not currently a member of the source server.";
     else {
-      roleAssigned = await addGuildMemberRole(report.guild_id, report.reported_user_id, SCAMMER_ROLE_ID, "Glow approved scam report");
+      roleAssigned = await addGuildMemberRole(row.guild_id, row.data.reportedUserId, SCAMMER_ROLE_ID, "Glow approved scam report");
       if (!roleAssigned) roleAssignmentError = "Glow could not assign the scammer role. Check role hierarchy and Manage Roles.";
     }
   }
-  const { error: updateError } = await db.from("scam_reports").update({ role_assigned: roleAssigned, role_assignment_error: roleAssignmentError }).eq("id", reportId).eq("status", decision);
+  const finalData: ScamReportData = { ...nextData, roleAssigned, roleAssignmentError };
+  const { error: updateError } = await db.from("guild_items").update({ data: toJson(finalData) }).eq("id", reportId).eq("kind", SCAM_REPORT_KIND);
   if (updateError) throw updateError;
-  return { report: report as ScamReportRow, decision, roleAssigned, roleAssignmentError };
+  return { report: { ...row, data: finalData }, decision, roleAssigned, roleAssignmentError };
 }
