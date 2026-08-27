@@ -1,14 +1,15 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { getMe, listGuilds } from "@/lib/api.functions";
+import { getMe, listGuilds, signOut } from "@/lib/api.functions";
 import { TopBar } from "@/components/glow/shell";
 import { GlowCoinIcon } from "@/components/glow/coin-icon";
+import { AccountMenu } from "@/components/glow/account-menu";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useI18n } from "@/lib/i18n";
-import { botInviteUrl, guildIconUrl, userAvatarUrl } from "@/lib/discord";
-import { Plus, Settings2, Users } from "lucide-react";
+import { botInviteUrl, guildIconUrl } from "@/lib/discord";
+import { ArrowUpRight, CheckCircle2, Plus, Users } from "lucide-react";
 
 export const Route = createFileRoute("/dashboard/")({
   head: () => ({
@@ -71,13 +72,13 @@ function Servers() {
               <GlowCoinIcon className="size-5" />
               <span className="hidden sm:inline">{t("هدية Daily", "Daily gift")}</span>
             </a>
-            <Link to="/dashboard/account" className="flex items-center gap-2">
-              <img
-                src={userAvatarUrl(me.data.id, me.data.avatar)}
-                alt=""
-                className="size-8 rounded-full ring-2 ring-primary/50"
-              />
-            </Link>
+            <AccountMenu
+              user={me.data}
+              onSignOut={async () => {
+                await signOut();
+                window.location.href = "/";
+              }}
+            />
           </div>
         }
       />
@@ -101,44 +102,53 @@ function Servers() {
 
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {guilds.isLoading &&
-            [0, 1, 2].map((i) => <Skeleton key={i} className="h-32 rounded-xl" />)}
+            [0, 1, 2].map((i) => <Skeleton key={i} className="h-64 rounded-2xl" />)}
           {guilds.data?.map((g) => (
-            <Card key={g.id} className="glow-panel group relative overflow-hidden border-border/60 bg-card/50 p-5 transition duration-300 hover:-translate-y-1 hover:border-primary/40 hover:shadow-[0_24px_60px_-34px_hsl(var(--primary)/0.9)]">
-              <div className="flex items-center gap-3">
-                {guildIconUrl(g.id, g.icon) ? (
-                  <img src={guildIconUrl(g.id, g.icon)!} alt="" className="size-12 rounded-xl" />
-                ) : (
-                  <div className="flex size-12 items-center justify-center rounded-xl bg-primary/15 font-bold text-primary">
-                    {g.name.slice(0, 2)}
+            <Link
+              key={g.id}
+              to="/dashboard/$guildId"
+              params={{ guildId: g.id }}
+              className="group block rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            >
+              <Card className="glow-panel h-full overflow-hidden border-border/60 bg-card/50 transition duration-300 group-hover:-translate-y-1 group-hover:border-primary/45 group-hover:shadow-[0_26px_70px_-34px_hsl(var(--primary)/0.95)]">
+                <div className="flex min-h-36 flex-row-reverse items-stretch" dir="ltr">
+                  <div className="relative w-32 shrink-0 overflow-hidden bg-gradient-to-br from-primary/25 via-[#171531] to-cyan-950/50 sm:w-36">
+                    {guildIconUrl(g.id, g.icon) ? (
+                      <img
+                        src={guildIconUrl(g.id, g.icon)!}
+                        alt={t(`${g.name} — صورة السيرفر`, `${g.name} server icon`)}
+                        className="absolute inset-0 size-full object-cover transition duration-500 group-hover:scale-110"
+                      />
+                    ) : (
+                      <div className="absolute inset-0 flex items-center justify-center bg-[radial-gradient(circle_at_50%_30%,hsl(var(--primary)/0.4),transparent_55%)] text-4xl font-black text-primary/80">
+                        {g.name.slice(0, 2).toUpperCase()}
+                      </div>
+                    )}
+                    <div className="absolute inset-0 bg-gradient-to-l from-transparent to-[#0b0a1b]/35" />
                   </div>
-                )}
-                <div className="min-w-0">
-                  <p className="truncate font-semibold text-foreground">{g.name}</p>
-                  {g.memberCount != null && (
-                    <p className="flex items-center gap-1 text-xs text-muted-foreground">
-                      <Users className="size-3" /> {g.memberCount}
-                    </p>
-                  )}
+                  <div className="flex min-w-0 flex-1 flex-col justify-between gap-4 p-4 text-left sm:p-5">
+                    <div>
+                      <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-bold ${g.botPresent ? "border-emerald-300/30 bg-emerald-300/10 text-emerald-200" : "border-amber-300/35 bg-amber-300/10 text-amber-200"}`}>
+                        {g.botPresent ? <CheckCircle2 className="size-3.5" /> : <Plus className="size-3.5" />}
+                        {g.botPresent ? t("Glow مضاف", "Glow installed") : t("أضف Glow", "Add Glow")}
+                      </span>
+                      <p dir="auto" className="mt-3 truncate text-base font-bold text-foreground">{g.name}</p>
+                      {g.memberCount != null ? (
+                        <p className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
+                          <Users className="size-3.5" /> {Number(g.memberCount).toLocaleString("en-US")} {t("عضو", "members")}
+                        </p>
+                      ) : (
+                        <p className="mt-1 text-xs text-muted-foreground">{t("اضغط للمتابعة داخل الداشبورد", "Click to continue in the dashboard")}</p>
+                      )}
+                    </div>
+                    <div className="flex items-center justify-between gap-3 text-xs font-semibold text-primary">
+                      <span>{g.botPresent ? t("فتح الداشبورد", "Open dashboard") : t("فتح الإعداد", "Open setup")}</span>
+                      <ArrowUpRight className="size-4 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
+                    </div>
+                  </div>
                 </div>
-              </div>
-              <div className="mt-4">
-                {g.botPresent ? (
-                  <Button asChild className="w-full" size="sm">
-                    <Link to="/dashboard/$guildId" params={{ guildId: g.id }}>
-                      <Settings2 className="size-4" />
-                      {t("إدارة", "Manage")}
-                    </Link>
-                  </Button>
-                ) : (
-                  <Button asChild className="w-full" size="sm" variant="outline">
-                    <a href={botInviteUrl(g.id)} target="_blank" rel="noreferrer">
-                      <Plus className="size-4" />
-                      {t("أضف البوت", "Add bot")}
-                    </a>
-                  </Button>
-                )}
-              </div>
-            </Card>
+              </Card>
+            </Link>
           ))}
         </div>
         {guilds.data && guilds.data.length === 0 && (

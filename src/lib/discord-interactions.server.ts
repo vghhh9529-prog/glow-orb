@@ -272,7 +272,7 @@ async function daily(user: InteractionUser) {
   const newBalance = Number(wallet?.balance ?? 0) + amount;
   const nextReward = dailyRewardForStreak(streak + 1);
   return interactionResponse(
-    `تم استلام **${amount.toLocaleString("en-US")} Glow**.\nرصيدك الجديد: **${newBalance.toLocaleString("en-US")} Glow**.\nالستريك الحالي: **${streak}** · الهدية القادمة قد تصل إلى **${nextReward.toLocaleString("en-US")} Glow**.`,
+    `تم استلام **${amount.toLocaleString("en-US")} Glow Coin**.\nرصيدك الجديد: **${newBalance.toLocaleString("en-US")} Glow Coin**.\nالستريك الحالي: **${streak}** · الهدية القادمة قد تصل إلى **${nextReward.toLocaleString("en-US")} Glow Coin**.`,
     { ephemeral: true, title: "Daily Gift Claimed", color: 0x7c5cff },
   );
 }
@@ -287,7 +287,7 @@ async function balance(user: InteractionUser, targetId = user.id) {
     .maybeSingle();
   const label = targetId === user.id ? "رصيدك" : "رصيد العضو";
   return interactionResponse(
-    `${label}: **${Number(wallet?.balance ?? 0)} Glow** · الستريك: **${Number(wallet?.streak ?? 0)}** · المكتسب: **${Number(wallet?.total_earned ?? 0)}**.`,
+    `${label}: **${Number(wallet?.balance ?? 0)} Glow Coin** · الستريك: **${Number(wallet?.streak ?? 0)}** · المكتسب: **${Number(wallet?.total_earned ?? 0)} Glow Coin**.`,
   );
 }
 
@@ -479,8 +479,8 @@ export async function handleDiscordCardCommand(
         totalEarned: Number(wallet?.total_earned ?? 0),
       }),
       filename: "glow-balance-card.png",
-      title: "Glow Balance",
-      description: "English Glow currency card · live balance data",
+      title: "Glow Coin Balance",
+      description: "English Glow Coin card · live balance data",
     };
   }
 
@@ -864,7 +864,7 @@ async function pointsInfo(payload: DiscordInteractionPayload, user: InteractionU
   const { error } = await database.from("glow_wallets").upsert({ user_id: targetId, balance: next, total_earned: Number(wallet?.total_earned ?? 0), updated_at: new Date().toISOString() }, { onConflict: "user_id" });
   if (error) return interactionResponse("تعذر تحديث الرصيد.", { ephemeral: true });
   await database.from("glow_transactions").insert({ user_id: targetId, amount: next - current, kind: "admin_adjustment", note: `Glow points adjustment by ${user.id}` });
-  return interactionResponse(`تم تحديث رصيد <@${targetId}> إلى **${next} Glow**.`);
+  return interactionResponse(`تم تحديث رصيد <@${targetId}> إلى **${next} Glow Coin**.`);
 }
 
 async function pointsResetInfo(payload: DiscordInteractionPayload) {

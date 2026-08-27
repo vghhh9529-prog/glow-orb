@@ -2,12 +2,12 @@
 export const SLASH_COMMANDS = [
   {
     name: "daily",
-    description: "استلم مكافأة Glow اليومية (كل 12 ساعة)",
+    description: "استلم مكافأة Glow Coin اليومية (كل 12 ساعة)",
     type: 1,
   },
   {
     name: "balance",
-    description: "اعرض رصيدك من عملة Glow",
+    description: "اعرض رصيدك من عملة Glow Coin",
     type: 1,
     options: [{ name: "user", description: "عضو آخر", type: 6, required: false }],
   },
@@ -79,7 +79,7 @@ export const SLASH_COMMANDS = [
   },
   {
     name: "points-list",
-    description: "اعرض نقاطك في Glow",
+    description: "اعرض نقاطك في Glow Coin",
     type: 1,
   },
   {
@@ -316,7 +316,7 @@ export const SLASH_COMMANDS = [
   },
   {
     name: "points",
-    description: "إدارة رصيد Glow لعضو",
+    description: "إدارة رصيد Glow Coin لعضو",
     type: 1,
     options: [
       { name: "member", description: "العضو المطلوب", type: 6, required: true },
@@ -326,7 +326,7 @@ export const SLASH_COMMANDS = [
   },
   {
     name: "points-reset",
-    description: "أعد تعيين رصيد Glow لعضو محدد",
+    description: "أعد تعيين رصيد Glow Coin لعضو محدد",
     type: 1,
     options: [{ name: "member", description: "العضو المطلوب", type: 6, required: true }],
   },

@@ -47,6 +47,7 @@ import { toast } from "sonner";
 import {
   addCase,
   getCases,
+  getMe,
   getScammerDirectory,
   getScammerReports,
   getGuildLeaderboard,
@@ -61,12 +62,14 @@ import {
   saveModule,
   submitScamReport,
   updateSuggestion,
+  signOut,
 } from "@/lib/api.functions";
 import { MODULE_KEYS, type ModuleKey, guildIconUrl } from "@/lib/discord";
 import { COMMAND_CATALOG, type CommandCategory } from "@/lib/command-catalog";
 import { MODULE_DEFAULTS, PLACEHOLDERS } from "@/lib/module-defaults";
 import { useI18n } from "@/lib/i18n";
 import { ConfigEditor, type Option } from "@/components/glow/config-editor";
+import { AccountMenu } from "@/components/glow/account-menu";
 import { TopBar } from "@/components/glow/shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -460,6 +463,7 @@ export function GuildDashboardLayout({
 }) {
   const { t, dir } = useI18n();
   const navigate = useNavigate();
+  const me = useQuery({ queryKey: ["me"], queryFn: () => getMe() });
   const activeModules = MODULE_KEYS.filter((key) => workspace.modules?.[key]?.enabled).length;
   const guildIcon = guildIconUrl(workspace.guild.id, workspace.guild.icon);
 
@@ -486,15 +490,26 @@ export function GuildDashboardLayout({
     <div className="min-h-screen overflow-x-clip bg-background">
       <TopBar
         right={
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => navigate({ to: "/dashboard" })}
-            className="gap-2"
-          >
-            <ArrowLeft className="size-4" />
-            <span className="hidden sm:inline">{t("السيرفرات", "Servers")}</span>
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => navigate({ to: "/dashboard" })}
+              className="gap-2"
+            >
+              <ArrowLeft className="size-4" />
+              <span className="hidden sm:inline">{t("السيرفرات", "Servers")}</span>
+            </Button>
+            {me.data && (
+              <AccountMenu
+                user={me.data}
+                onSignOut={async () => {
+                  await signOut();
+                  window.location.href = "/";
+                }}
+              />
+            )}
+          </div>
         }
       />
       <div dir="ltr" className="dashboard-shell mx-auto flex w-full max-w-[1440px] flex-row-reverse gap-3 px-3 py-3 sm:gap-4 sm:px-5 sm:py-4 lg:gap-6 lg:px-6">

@@ -265,7 +265,7 @@ export async function renderBalanceCard(stats: GlowBalanceCardStats) {
   const height = 630;
   const canvas = createCanvas(width, height);
   const ctx = canvas.getContext("2d");
-  cardShell(ctx, width, height, "GLOW BALANCE");
+  cardShell(ctx, width, height, "GLOW COIN BALANCE");
   const image = await remoteImage(stats.avatarUrl);
   avatar(ctx, image, 72, 166, 148);
   text(ctx, stats.displayName.slice(0, 28), 260, 215, 38, "#f5f4ff", "800");
@@ -273,13 +273,13 @@ export async function renderBalanceCard(stats: GlowBalanceCardStats) {
   text(ctx, `ID  ${stats.userId}`, 262, 286, 14, "#777d9e", "500");
 
   glowCoin(ctx, 72, 350, 94);
-  text(ctx, "GLOW BALANCE", 194, 382, 13, "#858daf", "700");
+  text(ctx, "GLOW COIN BALANCE", 194, 382, 13, "#858daf", "700");
   text(ctx, stats.balance.toLocaleString("en-US"), 194, 435, 54, "#f5f4ff", "800");
-  text(ctx, "Glow", 198, 464, 20, "#a996ff", "700");
+  text(ctx, "Glow Coin", 198, 464, 20, "#a996ff", "700");
 
   stat(ctx, "Daily streak", String(stats.streak), 72, 510, 300);
   stat(ctx, "Total earned", stats.totalEarned.toLocaleString("en-US"), 396, 510, 340);
-  stat(ctx, "Currency", "Glow", 760, 510, 368);
+  stat(ctx, "Currency", "Glow Coin", 760, 510, 368);
   return canvas.toBuffer("image/png");
 }
 

@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { claimGlowDaily, getGlowLeaderboard, getMe, getMyProfile, getWallet, signOut } from "@/lib/api.functions";
 import { TopBar } from "@/components/glow/shell";
+import { AccountMenu } from "@/components/glow/account-menu";
 import { GlowCoinIcon } from "@/components/glow/coin-icon";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -11,7 +12,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useI18n } from "@/lib/i18n";
 import { userAvatarUrl } from "@/lib/discord";
 import { toast } from "sonner";
-import { Flame, LogOut, Gift, ArrowLeft, Trophy, Sparkles, Server, Zap } from "lucide-react";
+import { Flame, Gift, ArrowLeft, Trophy, Sparkles, Server, Zap } from "lucide-react";
 
 export const Route = createFileRoute("/dashboard/account")({
   head: () => ({
@@ -105,16 +106,13 @@ function Account() {
     <div className="min-h-screen bg-background">
       <TopBar
         right={
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={async () => {
+          <AccountMenu
+            user={me.data ?? { id: "0", username: "Glow", avatar: null }}
+            onSignOut={async () => {
               await signOut();
               window.location.href = "/";
             }}
-          >
-            <LogOut className="size-4" />
-          </Button>
+          />
         }
       />
       <div className="mx-auto max-w-4xl px-4 py-10">
@@ -179,9 +177,9 @@ function Account() {
         <section id="wallet" aria-labelledby="glow-wallet-title" className="mt-6 scroll-mt-24">
           <div className="mb-3 flex items-end justify-between gap-3">
             <div>
-              <p className="text-xs font-bold uppercase tracking-[0.2em] text-primary">Glow currency</p>
+              <p className="text-xs font-bold uppercase tracking-[0.2em] text-primary">Glow Coin</p>
               <h2 id="glow-wallet-title" className="mt-1 text-lg font-bold text-foreground">
-                {t("محفظة Glow", "Your Glow wallet")}
+                {t("محفظة Glow Coin", "Your Glow Coin wallet")}
               </h2>
             </div>
             <GlowCoinIcon className="size-9" />
@@ -192,7 +190,7 @@ function Account() {
               <div className="relative flex items-center gap-3">
                 <GlowCoinIcon />
                 <div>
-                  <p className="text-xs text-muted-foreground">{t("الرصيد", "Balance")}</p>
+                  <p className="text-xs text-muted-foreground">{t("رصيد Glow Coin", "Glow Coin balance")}</p>
                   <p className="mt-1 text-2xl font-black text-foreground">{Number(wallet.data?.balance ?? 0).toLocaleString("en-US")}</p>
                 </div>
               </div>
@@ -209,32 +207,42 @@ function Account() {
             </Card>
           </div>
 
-          <Card id="daily" className="mt-4 scroll-mt-24 overflow-hidden border-primary/25 bg-gradient-to-r from-primary/10 via-card/60 to-cyan-400/5 p-5 sm:p-6">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex min-w-0 items-center gap-3">
-                <span className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-primary/15 text-primary">
-                  <Gift className="size-5" />
-                </span>
-                <div className="min-w-0">
-                  <p className="font-semibold text-foreground">{t("هدية Daily", "Daily gift")}</p>
-                  <p className="text-sm leading-6 text-muted-foreground">
-                    {wallet.data?.canClaim ? t("جاهزة للاستلام الآن!", "Ready to claim now!") : remainingText}
-                  </p>
-                  <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-semibold text-primary">
-                    <span>+{nextReward.toLocaleString("en-US")} Glow</span>
-                    <span className="text-muted-foreground">·</span>
-                    <span>{t(`ستريك ${currentStreak}/10`, `Streak ${currentStreak}/10`)}</span>
-                  </div>
-                  <Progress value={streakProgress} className="mt-3 h-1.5 bg-primary/10" />
+          <Card id="daily" className="mt-4 scroll-mt-24 overflow-hidden border-primary/30 bg-[radial-gradient(circle_at_80%_20%,hsl(var(--primary)/0.22),transparent_42%),linear-gradient(135deg,hsl(var(--primary)/0.12),hsl(var(--card)/0.8),hsl(190_80%_50%/0.06))] p-0">
+            <div className="grid items-center gap-8 p-6 sm:p-8 lg:grid-cols-[0.9fr_1.1fr] lg:p-10">
+              <div className="min-w-0">
+                <p className="text-xs font-bold uppercase tracking-[0.2em] text-primary">Glow Coin Daily</p>
+                <h3 className="mt-2 text-2xl font-black tracking-tight text-foreground sm:text-3xl">
+                  {t("هدية Glow Coin اليومية", "Your daily Glow Coin gift")}
+                </h3>
+                <p className="mt-3 max-w-md text-sm leading-7 text-muted-foreground">
+                  {t("اضغط الهدية الكبيرة واستلم عملتك. تتجدد كل 12 ساعة، والستريك يرفع مكافأتك.", "Tap the gift to claim your coins. It renews every 12 hours, and your streak increases the reward.")}
+                </p>
+                <div className="mt-5 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm font-bold text-primary">
+                  <span>+{nextReward.toLocaleString("en-US")} Glow Coin</span>
+                  <span className="text-muted-foreground">·</span>
+                  <span>{t(`ستريك ${currentStreak}/10`, `Streak ${currentStreak}/10`)}</span>
                 </div>
+                <Progress value={streakProgress} className="mt-3 h-2 max-w-md bg-primary/10" />
+                <p className="mt-3 text-xs font-semibold text-muted-foreground">
+                  {wallet.data?.canClaim ? t("الهدية جاهزة الآن", "Gift ready now") : remainingText}
+                </p>
               </div>
-              <Button
-                className="w-full shrink-0 sm:w-auto"
-                disabled={!wallet.data?.canClaim || claim.isPending}
-                onClick={() => claim.mutate()}
-              >
-                {claim.isPending ? t("جارٍ الاستلام...", "Claiming...") : t("استلم الهدية", "Claim gift")}
-              </Button>
+              <div className="flex min-h-64 items-center justify-center">
+                <button
+                  type="button"
+                  aria-label={t("استلام هدية Glow Coin", "Claim Glow Coin gift")}
+                  disabled={!wallet.data?.canClaim || claim.isPending}
+                  onClick={() => claim.mutate()}
+                  className="group relative flex size-48 flex-col items-center justify-center rounded-[2.75rem] border border-white/30 bg-gradient-to-br from-violet-300 via-primary to-cyan-300 text-white shadow-[0_22px_70px_-20px_hsl(var(--primary)/0.95)] transition duration-200 hover:scale-105 hover:shadow-[0_28px_90px_-20px_hsl(var(--primary)/1)] active:scale-95 disabled:cursor-not-allowed disabled:grayscale disabled:opacity-55 disabled:hover:scale-100 sm:size-56"
+                >
+                  <span className="absolute inset-2 rounded-[2.25rem] border border-white/25 bg-[#171531]/85" />
+                  <Gift className="relative size-16 text-cyan-200 transition duration-200 group-hover:-translate-y-1 group-hover:scale-110" />
+                  <span className="relative mt-3 text-sm font-black tracking-wide">
+                    {claim.isPending ? t("جارٍ الاستلام...", "Claiming...") : wallet.data?.canClaim ? t("اضغط للاستلام", "Tap to claim") : t("انتظر الموعد", "Wait for reset")}
+                  </span>
+                  <span className="relative mt-1 text-[11px] font-semibold text-white/70">{nextReward.toLocaleString("en-US")} Glow Coin</span>
+                </button>
+              </div>
             </div>
           </Card>
         </section>
@@ -254,7 +262,7 @@ function Account() {
         )}
 
         <h2 id="glow-leaderboard" className="mt-10 scroll-mt-24 text-lg font-bold text-foreground">
-          {t("صدارة Glow", "Glow leaderboard")}
+          {t("صدارة Glow Coin", "Glow Coin leaderboard")}
         </h2>
         <Card className="mt-3 divide-y divide-border/50 border-border/60 bg-card/50">
           {board.isLoading && <Skeleton className="m-4 h-24" />}

@@ -9,8 +9,8 @@ export interface CommandDefinition {
 }
 
 export const COMMAND_CATALOG: CommandDefinition[] = [
-  { name: "daily", category: "general", description: "استلم مكافأة Glow اليومية", supported: true },
-  { name: "balance", category: "general", description: "اعرض رصيدك من عملة Glow", supported: true },
+  { name: "daily", category: "general", description: "استلم مكافأة Glow Coin اليومية", supported: true },
+  { name: "balance", category: "general", description: "اعرض رصيدك من عملة Glow Coin", supported: true },
   { name: "leaderboard", category: "leveling", description: "أفضل الأعضاء في السيرفر", supported: true },
   { name: "glow", category: "general", description: "معلومات بوت Glow ورابط الداشبورد", supported: true },
   { name: "color-set", category: "general", description: "Set your color role by number", supported: true },
@@ -83,7 +83,7 @@ export const COMMAND_CATALOG: CommandDefinition[] = [
   { name: "mute-voice", category: "moderation", description: "ميوت صوتي لعضو حتى لا يستطيع التحدث في الرومات الصوتية", supported: false },
   { name: "unmute-voice", category: "moderation", description: "إلغاء الميوت الصوتي لعضو", supported: false },
   { name: "points-reset", category: "moderation", description: "إعادة تعيين النقاط", supported: true },
-  { name: "points", category: "moderation", description: "Manage the points of a user", supported: true },
+  { name: "points", category: "moderation", description: "Manage the Glow Coin balance of a user", supported: true },
   { name: "rar", category: "moderation", description: "Remove all roles from a user", supported: true },
   { name: "role-multiple", category: "moderation", description: "إعطاء أو إزالة رول من أعضاء السيرفر بالجملة", supported: false },
   { name: "role", category: "moderation", description: "إدارة رول/رولات لأعضاء", supported: true },
