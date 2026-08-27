@@ -1609,16 +1609,18 @@ async function handleGlowCoinMessage(message: Message) {
     return true;
   }
 
-  if (!/^\d{4}$/.test(content)) return false;
+  const compactCode = content.replace(/\s+/g, "");
+  if (!/^\d{4}$/.test(compactCode)) return false;
   const confirmation = await confirmGlowTransfer({
     guildId: message.guild.id,
     channelId: message.channelId,
     senderId: message.author.id,
-    code: content,
+    code: compactCode,
   });
   if (confirmation.reason === "none") return false;
-  if (message.deletable) await message.delete().catch(() => undefined);
-  if (!confirmation.ok) return true;
+  if (confirmation.ok || confirmation.reason === "expired" || confirmation.reason === "too_many_attempts") {
+    if (message.deletable) await message.delete().catch(() => undefined);
+  }
   return true;
 }
 

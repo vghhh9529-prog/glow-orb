@@ -316,7 +316,13 @@ export async function confirmGlowTransfer(input: {
 
   const transfer = await transferGlowCoin(String(data["senderId"]), String(data["recipientId"]), Number(data["amount"]));
   if (!transfer.ok) {
-    await db.from("guild_items").delete().eq("id", match.id).eq("guild_id", input.guildId);
+    if (transfer.reason === "storage") {
+      // Keep the challenge available when the database/RPC is temporarily unavailable.
+      // The code can be retried after the deployment or migration is repaired.
+      await db.from("guild_items").update({ enabled: true }).eq("id", match.id).eq("guild_id", input.guildId);
+    } else {
+      await db.from("guild_items").delete().eq("id", match.id).eq("guild_id", input.guildId);
+    }
     const reason = transfer.reason ?? "storage";
     return transfer.senderBalance === undefined
       ? { ok: false, reason }
