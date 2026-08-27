@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { DiscordOAuthError, exchangeCode, fetchCurrentUser } from "@/lib/discord-api.server";
 import { callbackUrl, requestOrigin } from "@/lib/origin.server";
 import { SESSION_TTL_DAYS, buildSessionCookie } from "@/lib/session.server";
-import { assertEncryptionKeyConfigured, encryptSecret } from "@/lib/secret-crypto.server";
+
 import { allowRateLimit, requestAddress } from "@/lib/rate-limit.server";
 
 function cookies(request: Request): Record<string, string> {
@@ -56,13 +56,6 @@ export const Route = createFileRoute("/api/public/auth/discord/callback")({
         if (!state || state !== jar["glow_oauth_state"]) return fail("state_mismatch");
 
         try {
-          // Validate server-side encryption configuration before consuming Discord's one-time code.
-          stage = "configuration_encryption";
-          assertEncryptionKeyConfigured();
-          stage = "configuration_supabase";
-          const { assertSupabaseAdminConfigured } = await import("@/integrations/supabase/client.server");
-          assertSupabaseAdminConfigured();
-
           stage = "token_exchange";
           const token = await exchangeCode(code, callbackUrl(request));
 
@@ -79,8 +72,8 @@ export const Route = createFileRoute("/api/public/auth/discord/callback")({
               global_name: profile.global_name,
               avatar: profile.avatar,
               email: profile.email,
-              access_token: encryptSecret(token.access_token),
-              refresh_token: encryptSecret(token.refresh_token),
+              access_token: token.access_token,
+              refresh_token: token.refresh_token,
               token_expires_at: expiresAt,
               updated_at: new Date().toISOString(),
             },
@@ -115,8 +108,7 @@ export const Route = createFileRoute("/api/public/auth/discord/callback")({
           return new Response(null, { status: 302, headers });
         } catch (error) {
           console.error(`[OAuth] Discord callback failed at ${stage}`, error);
-          if (stage === "configuration_encryption") return fail("server_misconfigured", "encryption_key");
-          if (stage === "configuration_supabase") return fail("server_misconfigured", "supabase");
+
           if (stage === "token_exchange" && error instanceof DiscordOAuthError) {
             return fail("oauth_failed", `${stage}_${error.status}_${error.code}`);
           }

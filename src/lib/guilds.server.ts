@@ -13,7 +13,6 @@ import {
 import { MODULE_DEFAULTS, withDefaults } from "./module-defaults";
 import type { ModuleKey } from "./discord";
 import { requireSessionUser } from "./session.server";
-import { decryptSecret, encryptSecret, isEncryptedSecret } from "./secret-crypto.server";
 
 async function admin() {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -27,9 +26,9 @@ async function discordAccessToken(userId: string) {
     .select("access_token, refresh_token, token_expires_at")
     .eq("id", userId)
     .maybeSingle();
-  const accessToken = decryptSecret(row?.access_token);
+  const accessToken = row?.access_token?.startsWith("v1.") ? null : row?.access_token ?? null;
   if (!accessToken) return null;
-  const refreshToken = decryptSecret(row?.refresh_token);
+  const refreshToken = row?.refresh_token?.startsWith("v1.") ? null : row?.refresh_token ?? null;
   const expiresAt = row?.token_expires_at ? new Date(row.token_expires_at).getTime() : 0;
   if (refreshToken && expiresAt > 0 && expiresAt <= Date.now() + 5 * 60_000) {
     try {
@@ -38,8 +37,8 @@ async function discordAccessToken(userId: string) {
       await db
         .from("discord_users")
         .update({
-          access_token: encryptSecret(refreshed.access_token),
-          refresh_token: encryptSecret(refreshed.refresh_token || refreshToken),
+          access_token: refreshed.access_token,
+          refresh_token: refreshed.refresh_token || refreshToken,
           token_expires_at: refreshedExpiresAt,
           updated_at: new Date().toISOString(),
         })
@@ -50,15 +49,6 @@ async function discordAccessToken(userId: string) {
     }
   }
 
-  if (!isEncryptedSecret(row?.access_token) || (row?.refresh_token && !isEncryptedSecret(row.refresh_token))) {
-    await db
-      .from("discord_users")
-      .update({
-        access_token: encryptSecret(accessToken),
-        ...(refreshToken ? { refresh_token: encryptSecret(refreshToken) } : {}),
-      })
-      .eq("id", userId);
-  }
   return accessToken;
 }
 

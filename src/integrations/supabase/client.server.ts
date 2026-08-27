@@ -50,10 +50,6 @@ function supabaseAdminConfig() {
   return { url, serviceRoleKey };
 }
 
-export function assertSupabaseAdminConfigured() {
-  supabaseAdminConfig();
-}
-
 function createSupabaseAdminClient() {
   const { url: SUPABASE_URL, serviceRoleKey: SUPABASE_SERVICE_ROLE_KEY } = supabaseAdminConfig();
 
