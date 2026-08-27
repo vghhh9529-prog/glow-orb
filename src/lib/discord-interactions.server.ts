@@ -121,12 +121,19 @@ function decodeHex(value: string): Uint8Array | null {
   return bytes;
 }
 
+const DISCORD_SIGNATURE_MAX_AGE_MS = 5 * 60_000;
+
+export function isFreshDiscordTimestamp(timestamp: string, now = Date.now()) {
+  const seconds = Number(timestamp);
+  return Number.isInteger(seconds) && seconds > 0 && Math.abs(now - seconds * 1000) <= DISCORD_SIGNATURE_MAX_AGE_MS;
+}
+
 export async function verifyDiscordRequest(request: Request, body: string): Promise<boolean> {
   const publicKey =
     process.env["DISCORD_PUBLIC_KEY"] ?? process.env["DISCORD_APPLICATION_PUBLIC_KEY"];
   const signature = request.headers.get("x-signature-ed25519");
   const timestamp = request.headers.get("x-signature-timestamp");
-  if (!publicKey || !signature || !timestamp) return false;
+  if (!publicKey || !signature || !timestamp || !isFreshDiscordTimestamp(timestamp)) return false;
 
   const keyBytes = decodeHex(publicKey);
   const signatureBytes = decodeHex(signature);
