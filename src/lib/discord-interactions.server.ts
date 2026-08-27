@@ -21,11 +21,17 @@ import {
   updateGuildMember,
 } from "./discord-api.server";
 import { ensureGuildRow } from "./guilds.server";
-import { dailyRewardForStreak, dailyStreakForClaim } from "./glow.server";
+import {
+  createGlowTransferChallenge,
+  dailyRewardForStreak,
+  dailyStreakForClaim,
+  type GlowTransferChallenge,
+} from "./glow.server";
 import {
   discordAccountCreatedAt,
   renderBalanceCard,
   renderProfileCard,
+  renderTransferCodeCard,
   renderUserCard,
 } from "./card-renderer.server";
 
@@ -418,6 +424,14 @@ export interface DiscordCardInteractionResult {
   description?: string;
 }
 
+export interface DiscordTransferInteractionResult {
+  challenge: GlowTransferChallenge;
+  buffer: Buffer;
+  filename: string;
+  title: string;
+  description: string;
+}
+
 export async function sendDiscordCardFollowup(
   payload: DiscordInteractionPayload,
   card: DiscordCardInteractionResult,
@@ -445,6 +459,87 @@ export async function sendDiscordCardFollowup(
     body: form,
   });
   if (!response.ok) throw new Error(`Discord card follow-up failed: ${response.status} ${await response.text()}`);
+}
+
+export type DiscordTransferCommandResult =
+  | { kind: "challenge"; result: DiscordTransferInteractionResult }
+  | { kind: "error"; message: string };
+
+export async function handleDiscordTransferCommand(payload: DiscordInteractionPayload): Promise<DiscordTransferCommandResult> {
+  const sender = interactionUser(payload);
+  const recipientId = interactionOption<string>(payload, "user")?.trim();
+  const rawAmount = interactionOption<string | number>(payload, "amount");
+  const amount = typeof rawAmount === "number" ? rawAmount : Number(rawAmount);
+  if (!sender || !recipientId) return { kind: "error", message: "Choose a user and an amount to transfer." };
+  if (!/^\d{15,25}$/.test(recipientId)) return { kind: "error", message: "Choose a valid Discord user." };
+  const recipient = await fetchDiscordUser(recipientId);
+  if (!recipient) return { kind: "error", message: "I could not find that Discord user." };
+  const challenge = await createGlowTransferChallenge({
+    guildId: payload.guild_id ?? "global",
+    channelId: payload.channel_id ?? "global",
+    sender: { id: sender.id, username: sender.username, globalName: sender.global_name ?? null, avatar: sender.avatar ?? null },
+    recipient: { id: recipient.id, username: recipient.username, globalName: recipient.global_name ?? null, avatar: recipient.avatar ?? null },
+    amount,
+  });
+  if (!challenge.ok) {
+    if (challenge.reason === "self") return { kind: "error", message: "You cannot transfer Glow Coin to yourself." };
+    if (challenge.reason === "invalid_amount") return { kind: "error", message: "Enter a whole Glow Coin amount between 1 and 1,000,000,000." };
+    if (challenge.reason === "insufficient_funds") return { kind: "error", message: `You do not have enough Glow Coin. Your balance is ${Number(challenge.balance ?? 0).toLocaleString("en-US")}.` };
+    return { kind: "error", message: "The transfer could not be started. Please try again." };
+  }
+  return {
+    kind: "challenge",
+    result: {
+      challenge: challenge.challenge,
+      buffer: renderTransferCodeCard({
+        senderName: challenge.challenge.senderName,
+        recipientName: challenge.challenge.recipientName,
+        amount: challenge.challenge.amount,
+        code: challenge.challenge.code,
+        expiresInMinutes: 5,
+      }),
+      filename: "glow-transfer-confirmation.png",
+      title: "Confirm Glow Coin Transfer",
+      description: "Enter the four digits shown in the image to confirm this transfer. Type the code in the same channel within 5 minutes.",
+    },
+  };
+}
+
+export async function sendDiscordTransferFollowup(
+  payload: DiscordInteractionPayload,
+  transfer: DiscordTransferInteractionResult,
+) {
+  if (!payload.token) throw new Error("Missing Discord interaction token");
+  const form = new FormData();
+  form.append(
+    "payload_json",
+    JSON.stringify({
+      allowed_mentions: { parse: [] },
+      embeds: [
+        {
+          title: transfer.title,
+          description: transfer.description,
+          color: 0x7c5cff,
+          image: { url: `attachment://${transfer.filename}` },
+          footer: { text: "Glow Coin · Confirmation expires in 5 minutes" },
+        },
+      ],
+      flags: 64,
+    }),
+  );
+  form.append("files[0]", new Blob([new Uint8Array(transfer.buffer)], { type: "image/png" }), transfer.filename);
+  const response = await fetch(`${API}/webhooks/${CLIENT_ID}/${payload.token}`, { method: "POST", body: form });
+  if (!response.ok) throw new Error(`Discord transfer follow-up failed: ${response.status} ${await response.text()}`);
+}
+
+export async function sendDiscordTextFollowup(payload: DiscordInteractionPayload, message: string) {
+  if (!payload.token) throw new Error("Missing Discord interaction token");
+  const response = await fetch(`${API}/webhooks/${CLIENT_ID}/${payload.token}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ content: message, allowed_mentions: { parse: [] }, flags: 64 }),
+  });
+  if (!response.ok) throw new Error(`Discord text follow-up failed: ${response.status} ${await response.text()}`);
 }
 
 

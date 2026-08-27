@@ -3,6 +3,8 @@ import { requestOrigin } from "@/lib/origin.server";
 import {
   handleDiscordCardCommand,
   handleDiscordInteraction,
+  handleDiscordTransferCommand,
+  sendDiscordTransferFollowup,
   pingResponse,
   sendDiscordCardFollowup,
   verifyDiscordRequest,
@@ -26,6 +28,14 @@ export const Route = createFileRoute("/api/public/discord/interactions")({
 
         if (payload.type === 1) return pingResponse();
         if (payload.type !== 2) return new Response("unsupported interaction", { status: 400 });
+        if (payload.data?.name === "transfer") {
+          const result = await handleDiscordTransferCommand(payload);
+          if (result.kind === "error") return Response.json({ type: 4, data: { content: result.message, flags: 64 } });
+          void sendDiscordTransferFollowup(payload, result.result).catch((error: unknown) =>
+            console.error("[Glow HTTP] Discord transfer follow-up failed", error),
+          );
+          return Response.json({ type: 5, data: { flags: 64 } });
+        }
         if (payload.data?.name === "user" || payload.data?.name === "profile" || payload.data?.name === "balance") {
           void handleDiscordCardCommand(payload)
             .then((card) => (card ? sendDiscordCardFollowup(payload, card) : undefined))

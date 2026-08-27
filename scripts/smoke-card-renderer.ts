@@ -1,4 +1,4 @@
-import { renderBalanceCard, renderProfileCard } from "../src/lib/card-renderer.server";
+import { renderBalanceCard, renderProfileCard, renderTransferCodeCard } from "../src/lib/card-renderer.server";
 
 const png = await renderProfileCard({
   username: "demo_user",
@@ -24,4 +24,14 @@ const balancePng = await renderBalanceCard({
 });
 if (balancePng.length < 10_000) throw new Error(`Balance card is unexpectedly small: ${balancePng.length}`);
 if (balancePng.subarray(0, 8).toString("hex") !== "89504e470d0a1a0a") throw new Error("Balance output is not a PNG");
-console.log(`card renderer ok: profile=${png.length} bytes, balance=${balancePng.length} bytes`);
+
+const transferPng = renderTransferCodeCard({
+  senderName: "Sender",
+  recipientName: "Recipient",
+  amount: 1_250,
+  code: "4827",
+  expiresInMinutes: 5,
+});
+if (transferPng.length < 10_000) throw new Error(`Transfer card is unexpectedly small: ${transferPng.length}`);
+if (transferPng.subarray(0, 8).toString("hex") !== "89504e470d0a1a0a") throw new Error("Transfer output is not a PNG");
+console.log(`card renderer ok: profile=${png.length} bytes, balance=${balancePng.length} bytes, transfer=${transferPng.length} bytes`);

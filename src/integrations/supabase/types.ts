@@ -431,7 +431,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      transfer_glow_coin: {
+        Args: {
+          p_amount: number
+          p_recipient_id: string
+          p_sender_id: string
+        }
+        Returns: Json
+      }
     }
     Enums: {
       [_ in never]: never

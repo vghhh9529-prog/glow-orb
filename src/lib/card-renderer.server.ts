@@ -283,6 +283,40 @@ export async function renderBalanceCard(stats: GlowBalanceCardStats) {
   return canvas.toBuffer("image/png");
 }
 
+export interface GlowTransferCodeCardStats {
+  senderName: string;
+  recipientName: string;
+  amount: number;
+  code: string;
+  expiresInMinutes: number;
+}
+
+export function renderTransferCodeCard(stats: GlowTransferCodeCardStats) {
+  const width = 1200;
+  const height = 630;
+  const canvas = createCanvas(width, height);
+  const ctx = canvas.getContext("2d");
+  cardShell(ctx, width, height, "TRANSFER CONFIRMATION");
+  text(ctx, "Enter the 4-digit code shown below to confirm", 72, 184, 24, "#f5f4ff", "700");
+  text(ctx, `${stats.senderName.slice(0, 24)}  →  ${stats.recipientName.slice(0, 24)}`, 72, 222, 18, "#a9acc8", "600");
+  text(ctx, `${stats.amount.toLocaleString("en-US")} Glow Coin  ·  Expires in ${stats.expiresInMinutes} minutes`, 72, 254, 16, "#858daf", "600");
+
+  roundedRect(ctx, 160, 292, 880, 220, 28);
+  ctx.fillStyle = "rgba(124,92,255,.14)";
+  ctx.fill();
+  ctx.strokeStyle = "rgba(185,170,255,.42)";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  const firstLine = `${stats.code[0] ?? "0"}    ${stats.code[1] ?? "0"}`;
+  const secondLine = `${stats.code[2] ?? "0"}    ${stats.code[3] ?? "0"}`;
+  ctx.textAlign = "center";
+  text(ctx, firstLine, width / 2, 388, 76, "#f5f4ff", "800");
+  text(ctx, secondLine, width / 2, 480, 76, "#b9aaff", "800");
+  ctx.textAlign = "start";
+  text(ctx, "This code is private. Never share it with anyone else.", 72, 570, 16, "#858daf", "600");
+  return canvas.toBuffer("image/png");
+}
+
 export function discordAccountCreatedAt(id: string) {
   return discordCreatedAt(id);
 }

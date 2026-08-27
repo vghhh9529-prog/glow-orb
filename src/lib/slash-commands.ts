@@ -12,6 +12,15 @@ export const SLASH_COMMANDS = [
     options: [{ name: "user", description: "عضو آخر", type: 6, required: false }],
   },
   {
+    name: "transfer",
+    description: "حوّل Glow Coin إلى عضو",
+    type: 1,
+    options: [
+      { name: "user", description: "المستلم", type: 6, required: true },
+      { name: "amount", description: "المبلغ (1-1,000,000,000)", type: 4, required: true, min_value: 1, max_value: 1000000000 },
+    ],
+  },
+  {
     name: "rank",
     description: "اعرض مستواك ونقاط الخبرة في السيرفر",
     type: 1,

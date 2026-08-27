@@ -11,6 +11,7 @@ export interface CommandDefinition {
 export const COMMAND_CATALOG: CommandDefinition[] = [
   { name: "daily", category: "general", description: "استلم مكافأة Glow Coin اليومية", supported: true },
   { name: "balance", category: "general", description: "اعرض رصيدك من عملة Glow Coin", supported: true },
+  { name: "transfer", category: "general", description: "تحويل Glow Coin إلى عضو بعد تأكيد آمن", supported: true },
   { name: "leaderboard", category: "leveling", description: "أفضل الأعضاء في السيرفر", supported: true },
   { name: "glow", category: "general", description: "معلومات بوت Glow ورابط الداشبورد", supported: true },
   { name: "color-set", category: "general", description: "Set your color role by number", supported: true },

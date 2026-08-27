@@ -30,6 +30,7 @@ import { supabaseAdmin } from "../src/integrations/supabase/client.server";
 import {
   handleDiscordCardCommand,
   handleDiscordInteraction,
+  handleDiscordTransferCommand,
   type DiscordInteractionOption,
   type DiscordInteractionPayload,
 } from "../src/lib/discord-interactions.server";
@@ -50,6 +51,8 @@ import {
 } from "../src/lib/message-guard.server";
 import { SLASH_COMMANDS } from "../src/lib/slash-commands";
 import { configuredPublicOrigin } from "../src/lib/origin.server";
+import { confirmGlowTransfer, createGlowTransferChallenge } from "../src/lib/glow.server";
+import { renderTransferCodeCard } from "../src/lib/card-renderer.server";
 import {
   isScamReviewButton,
   reviewScamReport,
@@ -1289,6 +1292,26 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return;
     }
     const payload = interactionPayload(interaction);
+    if (interaction.commandName === "transfer") {
+      const transfer = await handleDiscordTransferCommand(payload);
+      if (transfer.kind === "error") {
+        await interaction.reply({ content: transfer.message, ephemeral: true });
+      } else {
+        await interaction.reply({
+          embeds: [
+            new EmbedBuilder()
+              .setColor(0x7c5cff)
+              .setTitle(transfer.result.title)
+              .setDescription(transfer.result.description)
+              .setImage(`attachment://${transfer.result.filename}`)
+              .setFooter({ text: "Glow Coin · Confirmation expires in 5 minutes" }),
+          ],
+          files: [{ attachment: transfer.result.buffer, name: transfer.result.filename }],
+          ephemeral: true,
+        });
+      }
+      return;
+    }
     if (interaction.commandName === "user" || interaction.commandName === "profile" || interaction.commandName === "balance") {
       const card = await handleDiscordCardCommand(payload);
       if (!card) throw new Error("Card command did not return an image");
@@ -1548,6 +1571,87 @@ client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
   }).catch((error: unknown) => console.error("Member update log/protection failed", error));
 });
 
+async function handleGlowCoinMessage(message: Message) {
+  if (!message.guild || message.author.bot) return false;
+  const content = message.content.trim();
+  if (/^glow\b/i.test(content)) {
+    const match = content.match(/^glow\s+<@!?(\d{15,25})>\s+(\d+)$/i);
+    if (!match) {
+      await message.reply({ content: "Usage: `glow @user amount`", allowedMentions: { parse: [] } }).catch(() => undefined);
+      return true;
+    }
+    const [, recipientId, amountText] = match;
+    const recipient = message.mentions.users.get(recipientId) ?? await message.client.users.fetch(recipientId).catch(() => null);
+    if (!recipient) {
+      await message.reply({ content: "I could not find that Discord user.", allowedMentions: { parse: [] } }).catch(() => undefined);
+      return true;
+    }
+    const challenge = await createGlowTransferChallenge({
+      guildId: message.guild.id,
+      channelId: message.channelId,
+      sender: { id: message.author.id, username: message.author.username, globalName: message.author.globalName, avatar: message.author.avatar },
+      recipient: { id: recipient.id, username: recipient.username, globalName: recipient.globalName, avatar: recipient.avatar },
+      amount: Number(amountText),
+    });
+    if (!challenge.ok) {
+      const errorMessage = challenge.reason === "self"
+        ? "You cannot transfer Glow Coin to yourself."
+        : challenge.reason === "invalid_amount"
+          ? "Enter a whole Glow Coin amount between 1 and 1,000,000,000."
+          : challenge.reason === "insufficient_funds"
+            ? `You do not have enough Glow Coin. Your balance is ${Number(challenge.balance ?? 0).toLocaleString("en-US")}.`
+            : "The transfer could not be started. Please try again.";
+      await message.reply({ content: errorMessage, allowedMentions: { parse: [] } }).catch(() => undefined);
+      return true;
+    }
+    const transfer = challenge.challenge;
+    const card = renderTransferCodeCard({
+      senderName: transfer.senderName,
+      recipientName: transfer.recipientName,
+      amount: transfer.amount,
+      code: transfer.code,
+      expiresInMinutes: 5,
+    });
+    try {
+      await message.author.send({
+        content: "Glow Coin transfer confirmation. Enter the four digits in the original server channel within 5 minutes.",
+        files: [{ attachment: card, name: "glow-transfer-confirmation.png" }],
+      });
+      await message.reply({ content: "✅ I sent the confirmation image to your DMs. Enter the 4 digits here within 5 minutes.", allowedMentions: { parse: [] } }).catch(() => undefined);
+      if (message.deletable) await message.delete().catch(() => undefined);
+    } catch {
+      await message.reply({ content: "I could not send you a DM. Enable DMs for this server and run the transfer again.", allowedMentions: { parse: [] } }).catch(() => undefined);
+    }
+    return true;
+  }
+
+  if (!/^\d{4}$/.test(content)) return false;
+  const confirmation = await confirmGlowTransfer({
+    guildId: message.guild.id,
+    channelId: message.channelId,
+    senderId: message.author.id,
+    code: content,
+  });
+  if (confirmation.reason === "none") return false;
+  if (message.deletable) await message.delete().catch(() => undefined);
+  if (!confirmation.ok) {
+    const errorMessage = confirmation.reason === "invalid_code"
+      ? "That confirmation code is incorrect. Try again with the code from your Glow Coin image."
+      : confirmation.reason === "too_many_attempts"
+        ? "Too many incorrect attempts. Start the transfer again."
+        : confirmation.reason === "expired"
+          ? "That transfer code expired. Start the transfer again."
+          : "The transfer could not be completed. Please try again.";
+    await message.channel.send({ content: errorMessage, allowedMentions: { parse: [] } }).catch(() => undefined);
+    return true;
+  }
+  await message.channel.send({
+    content: `✅ **${confirmation.senderName}** transferred **${confirmation.amount.toLocaleString("en-US")} Glow Coin** to **${confirmation.recipientName}**.`,
+    allowedMentions: { parse: [] },
+  }).catch(() => undefined);
+  return true;
+}
+
 client.on(Events.MessageCreate, async (message) => {
   if (message.guild) {
     const contentLength = (message.content || message.cleanContent || "").length;
@@ -1560,6 +1664,11 @@ client.on(Events.MessageCreate, async (message) => {
     return false;
   });
   if (guarded) return;
+  const glowHandled = await handleGlowCoinMessage(message).catch((error: unknown) => {
+    console.error("Glow Coin transfer message failed", error);
+    return false;
+  });
+  if (glowHandled) return;
   await handleFixedCommunityChannels(message).catch((error: unknown) =>
     console.error("Fixed community channel action failed", error),
   );
