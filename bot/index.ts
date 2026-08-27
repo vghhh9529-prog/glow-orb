@@ -20,7 +20,9 @@ import {
   ModalBuilder,
   TextInputBuilder,
   TextInputStyle,
+  StringSelectMenuBuilder,
   type ModalSubmitInteraction,
+  type StringSelectMenuInteraction,
   type VoiceState,
 } from "discord.js";
 
@@ -368,6 +370,98 @@ async function createTicketFromModal(interaction: ModalSubmitInteraction) {
   return interaction.editReply(`Your private ticket is ready: <#${channel.id}>`);
 }
 
+const TICKET_PRIORITIES = [
+  { value: "normal", label: "Normal", description: "Standard support priority", emoji: "🟢" },
+  { value: "high", label: "High", description: "Needs attention soon", emoji: "🟠" },
+  { value: "urgent", label: "Urgent", description: "Critical issue or outage", emoji: "🔴" },
+] as const;
+
+type TicketPriority = (typeof TICKET_PRIORITIES)[number]["value"];
+
+function ticketPriorityMenu(currentPriority: string, messageId: string) {
+  const selected = TICKET_PRIORITIES.some((item) => item.value === currentPriority) ? currentPriority : "normal";
+  return new StringSelectMenuBuilder()
+    .setCustomId(`glow_ticket_priority_select:${messageId}`)
+    .setPlaceholder(`Choose priority (${selected})`)
+    .addOptions(
+      TICKET_PRIORITIES.map((item) => ({
+        label: item.label,
+        value: item.value,
+        description: item.description,
+        emoji: item.emoji,
+        default: item.value === selected,
+      })),
+    );
+}
+
+async function handleTicketPrioritySelect(interaction: StringSelectMenuInteraction) {
+  if (!interaction.guild) return interaction.reply({ content: "Tickets are available inside a server only.", ephemeral: true });
+  const [, ticketMessageId] = interaction.customId.split(":");
+  if (!ticketMessageId || !/^\d{17,20}$/.test(ticketMessageId)) {
+    return interaction.update({ content: "This priority menu has expired. Open the ticket menu again.", components: [] });
+  }
+  const ticket = await findTicket(interaction.channelId);
+  if (!ticket) return interaction.reply({ content: "This channel is not a Glow ticket.", ephemeral: true });
+  if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageChannels)) {
+    return interaction.reply({ content: "Only support staff can change ticket priority.", ephemeral: true });
+  }
+  const nextPriority = interaction.values[0] as TicketPriority | undefined;
+  if (!nextPriority || !TICKET_PRIORITIES.some((item) => item.value === nextPriority)) {
+    return interaction.reply({ content: "Choose a valid ticket priority.", ephemeral: true });
+  }
+  const ticketData = (ticket.data ?? {}) as Record<string, unknown>;
+  const config = (await ticketConfig(interaction.guild.id)).config;
+  if (config.allowPriorityChange === false) {
+    return interaction.reply({ content: "Ticket priority changes are disabled for this server.", ephemeral: true });
+  }
+  await saveTicketRecord({
+    guildId: interaction.guild.id,
+    channelId: interaction.channelId,
+    creatorId: String(ticketData.creatorId ?? ""),
+    creatorName: String(ticketData.creatorName ?? "member"),
+    status: String(ticketData.status ?? "open") === "closed" ? "closed" : "open",
+    id: ticket.id,
+    claimedBy: String(ticketData.claimedBy ?? "") || null,
+    priority: nextPriority,
+    categoryId: String(ticketData.categoryId ?? ""),
+    subject: String(ticketData.subject ?? "General support"),
+    createdAt: String(ticketData.createdAt ?? "") || undefined,
+  });
+  await logGuildEvent({
+    guild: interaction.guild,
+    event: "ticket",
+    title: "Ticket priority changed",
+    description: `<#${interaction.channelId}> is now **${nextPriority}** priority.`,
+    fields: [{ name: "Changed by", value: `<@${interaction.user.id}>`, inline: true }],
+  });
+  const updated = await buildTicketEmbed(
+    interaction.guild.name,
+    String(ticketData.creatorId ?? interaction.user.id),
+    String(ticketData.status ?? "open") === "closed" ? "closed" : "open",
+    nextPriority,
+  );
+  updated.setTitle(`Glow Support · ${String(ticketData.subject ?? "General support")}`);
+  const channel = interaction.channel;
+  if (!channel || !("messages" in channel)) {
+    return interaction.update({ content: "Could not find the ticket message to update.", components: [] });
+  }
+  const ticketMessage = await channel.messages.fetch(ticketMessageId).catch(() => null);
+  if (!ticketMessage) {
+    return interaction.update({ content: "The original ticket message is no longer available.", components: [] });
+  }
+  await ticketMessage.edit({
+    embeds: [updated],
+    components: [
+      new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder().setCustomId("glow_ticket_claim").setLabel("Claim").setEmoji("🛠️").setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId("glow_ticket_priority").setLabel(`Priority: ${nextPriority}`).setEmoji("📌").setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId("glow_ticket_close").setLabel("Close").setEmoji("🔒").setStyle(ButtonStyle.Danger),
+      ),
+    ],
+  });
+  return interaction.update({ content: `Priority updated to **${nextPriority}**.`, components: [] });
+}
+
 async function handleTicketButton(interaction: ButtonInteraction) {
   if (!interaction.guild) return interaction.reply({ content: "Tickets are available inside a server only.", ephemeral: true });
   const settings = await ticketConfig(interaction.guild.id);
@@ -384,13 +478,11 @@ async function handleTicketButton(interaction: ButtonInteraction) {
   if (interaction.customId === "glow_ticket_priority") {
     if (config.allowPriorityChange === false) return interaction.reply({ content: "Ticket priority changes are disabled for this server.", ephemeral: true });
     if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageChannels)) return interaction.reply({ content: "Only support staff can change ticket priority.", ephemeral: true });
-    const currentPriority = String(ticketData.priority ?? "normal");
-    const nextPriority = currentPriority === "normal" ? "high" : currentPriority === "high" ? "urgent" : "normal";
-    await saveTicketRecord({ guildId: interaction.guild.id, channelId: interaction.channelId, creatorId: String(ticketData.creatorId ?? ""), creatorName: String(ticketData.creatorName ?? "member"), status: String(ticketData.status ?? "open") === "closed" ? "closed" : "open", id: ticket.id, claimedBy: String(ticketData.claimedBy ?? "") || null, priority: nextPriority, categoryId: String(ticketData.categoryId ?? ""), subject: String(ticketData.subject ?? "General support"), createdAt: String(ticketData.createdAt ?? "") || undefined });
-    await logGuildEvent({ guild: interaction.guild, event: "ticket", title: "Ticket priority changed", description: `<#${interaction.channelId}> is now **${nextPriority}** priority.`, fields: [{ name: "Changed by", value: `<@${interaction.user.id}>`, inline: true }] });
-    const updated = await buildTicketEmbed(interaction.guild.name, String(ticketData.creatorId ?? interaction.user.id), String(ticketData.status ?? "open") === "closed" ? "closed" : "open", nextPriority);
-    updated.setTitle(`Glow Support · ${String(ticketData.subject ?? "General support")}`);
-    return interaction.update({ embeds: [updated], components: [new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId("glow_ticket_claim").setLabel("Claim").setEmoji("🛠️").setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId("glow_ticket_priority").setLabel(`Priority: ${nextPriority}`).setEmoji("📌").setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId("glow_ticket_close").setLabel("Close").setEmoji("🔒").setStyle(ButtonStyle.Danger))] });
+    return interaction.reply({
+      content: "Choose the new priority for this ticket:",
+      ephemeral: true,
+      components: [new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(ticketPriorityMenu(String(ticketData.priority ?? "normal"), interaction.message.id))],
+    });
   }
   if (interaction.customId === "glow_ticket_delete") {
     if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageChannels) && String(ticketData.creatorId) !== interaction.user.id) return interaction.reply({ content: "Only the ticket creator or staff can delete this ticket.", ephemeral: true });
@@ -1119,6 +1211,17 @@ client.on(Events.InteractionCreate, async (interaction) => {
       console.error("[Glow Bot] Ticket modal failed", error);
       if (!interaction.replied && !interaction.deferred) void interaction.reply({ content: "Could not open the ticket. Please check Glow's permissions and try again.", ephemeral: true }).catch(() => undefined);
       else void interaction.editReply("Could not open the ticket. Please check Glow's permissions and try again.").catch(() => undefined);
+    });
+    return;
+  }
+  if (interaction.isStringSelectMenu() && interaction.customId.startsWith("glow_ticket_priority_select:")) {
+    await handleTicketPrioritySelect(interaction).catch((error: unknown) => {
+      console.error("[Glow Bot] Ticket priority selection failed", error);
+      if (!interaction.replied && !interaction.deferred) {
+        void interaction.reply({ content: "Could not update the ticket priority.", ephemeral: true }).catch(() => undefined);
+      } else {
+        void interaction.editReply("Could not update the ticket priority.").catch(() => undefined);
+      }
     });
     return;
   }
