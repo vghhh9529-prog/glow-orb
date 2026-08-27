@@ -2,6 +2,7 @@ import { addGuildMemberRole, API, botToken, fetchDiscordUser, fetchGuildMember }
 import { assertGuildAccess, ensureGuildRow } from "./guilds.server";
 import { userAvatarUrl } from "./discord";
 import type { Json } from "@/integrations/supabase/types";
+import { allowRateLimit } from "./rate-limit.server";
 
 export const SCAM_REVIEW_CHANNEL_ID = "1542130215713509437";
 export const SCAMMER_ROLE_ID = "1542129398830866523";
@@ -63,6 +64,20 @@ function assertEvidenceKey(key: string, guildId: string) {
   ) {
     throw new Error("INVALID_EVIDENCE_KEY");
   }
+}
+
+function hasImageSignature(bytes: Uint8Array, mimeType: string) {
+  const startsWith = (...signature: number[]) => signature.every((value, index) => bytes[index] === value);
+  if (mimeType === "image/jpeg") return startsWith(0xff, 0xd8, 0xff);
+  if (mimeType === "image/png") return startsWith(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a);
+  if (mimeType === "image/gif") {
+    const header = String.fromCharCode(...bytes.slice(0, 6));
+    return header === "GIF87a" || header === "GIF89a";
+  }
+  if (mimeType === "image/webp") {
+    return String.fromCharCode(...bytes.slice(0, 4)) === "RIFF" && String.fromCharCode(...bytes.slice(8, 12)) === "WEBP";
+  }
+  return false;
 }
 
 function readStoredEvidence(value: Json): StoredEvidence[] {
@@ -152,9 +167,11 @@ export async function uploadScamEvidence(guildId: string, file: File) {
   if (!ALLOWED_IMAGE_TYPES.has(file.type)) throw new Error("INVALID_IMAGE_TYPE");
   if (file.size <= 0 || file.size > MAX_EVIDENCE_BYTES) throw new Error("IMAGE_TOO_LARGE");
   const extension = file.type === "image/jpeg" ? "jpg" : file.type.split("/")[1] ?? "png";
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  if (!hasImageSignature(bytes, file.type)) throw new Error("INVALID_IMAGE_CONTENT");
   const key = `${guildId}/${crypto.randomUUID()}.${extension}`;
   const db = await ensureEvidenceBucket();
-  const { error } = await db.storage.from(SCAM_EVIDENCE_BUCKET).upload(key, new Uint8Array(await file.arrayBuffer()), {
+  const { error } = await db.storage.from(SCAM_EVIDENCE_BUCKET).upload(key, bytes, {
     contentType: file.type,
     cacheControl: "31536000",
     upsert: false,
@@ -222,6 +239,9 @@ async function getScamItem(id: string) {
 
 export async function submitScamReport(input: { guildId: string; reportedUserId: string; description: string; evidenceKeys: string[] }) {
   const { user, guild } = await assertGuildAccess(input.guildId);
+  if (!allowRateLimit(`scam-submit:${user.id}:${input.guildId}`, 5, 60 * 60_000)) {
+    throw new Error("RATE_LIMITED");
+  }
   assertDiscordId(input.guildId);
   assertDiscordId(input.reportedUserId);
   const description = input.description.trim();

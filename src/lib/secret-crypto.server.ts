@@ -5,11 +5,10 @@ const IV_BYTES = 12;
 const AUTH_TAG_BYTES = 16;
 
 function encryptionKey() {
-  const secret =
-    process.env["DISCORD_TOKEN_ENCRYPTION_KEY"] ??
-    process.env["GLOW_SUPABASE_SERVICE_ROLE_KEY"] ??
-    process.env["SUPABASE_SERVICE_ROLE_KEY"];
-  if (!secret) throw new Error("DISCORD_TOKEN_ENCRYPTION_KEY is not configured");
+  const secret = process.env["DISCORD_TOKEN_ENCRYPTION_KEY"]?.trim();
+  if (!secret || secret.length < 32) {
+    throw new Error("DISCORD_TOKEN_ENCRYPTION_KEY must be at least 32 characters");
+  }
   return createHash("sha256").update(secret, "utf8").digest();
 }
 

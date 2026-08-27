@@ -1,4 +1,4 @@
-process.env.DISCORD_TOKEN_ENCRYPTION_KEY = "test-only-secret-for-smoke";
+process.env.DISCORD_TOKEN_ENCRYPTION_KEY = "test-only-secret-for-smoke-32-bytes-minimum";
 
 const { decryptSecret, encryptSecret, isEncryptedSecret } = await import("../src/lib/secret-crypto.server");
 

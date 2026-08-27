@@ -15,12 +15,18 @@ const CONTENT_SECURITY_POLICY = [
 
 export function withSecurityHeaders(response: Response): Response {
   const headers = new Headers(response.headers);
-  headers.set("Content-Security-Policy", CONTENT_SECURITY_POLICY);
+  const isProduction = process.env["NODE_ENV"] === "production";
+  headers.set("Content-Security-Policy", isProduction ? `${CONTENT_SECURITY_POLICY}; upgrade-insecure-requests` : CONTENT_SECURITY_POLICY);
   headers.set("X-Frame-Options", "DENY");
   headers.set("X-Content-Type-Options", "nosniff");
   headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
   headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
-  if (process.env["NODE_ENV"] === "production") {
+  headers.set("Cross-Origin-Opener-Policy", "same-origin-allow-popups");
+  headers.set("Cross-Origin-Resource-Policy", "same-site");
+  headers.set("Origin-Agent-Cluster", "?1");
+  headers.set("X-DNS-Prefetch-Control", "off");
+  headers.set("X-Permitted-Cross-Domain-Policies", "none");
+  if (isProduction) {
     headers.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
   }
   return new Response(response.body, {

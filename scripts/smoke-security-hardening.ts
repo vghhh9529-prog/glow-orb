@@ -4,6 +4,7 @@ process.env.NODE_ENV = "production";
 const { withSecurityHeaders } = await import("../src/lib/security-headers");
 const { requestOrigin } = await import("../src/lib/origin.server");
 const { withDefaults } = await import("../src/lib/module-defaults");
+const { allowRateLimit } = await import("../src/lib/rate-limit.server");
 
 const secured = withSecurityHeaders(new Response("ok"));
 for (const [name, expected] of [
@@ -25,6 +26,15 @@ const origin = requestOrigin(
 );
 if (origin !== "https://glowbot.up.railway.app") throw new Error(`forwarded host was trusted: ${origin}`);
 
+process.env.PUBLIC_APP_URL = "https://id-preview--fa584a01-062d-40c8-a629-78cea86c73db.lovable.app";
+const previewOrigin = requestOrigin(new Request("https://glowbot.up.railway.app/"));
+if (previewOrigin !== "https://glowbot.up.railway.app") throw new Error(`preview origin was trusted: ${previewOrigin}`);
+delete process.env.PUBLIC_APP_URL;
+
+const rateKey = `security-smoke-${Date.now()}`;
+if (!allowRateLimit(rateKey, 1, 60_000)) throw new Error("rate limit rejected the first request");
+if (allowRateLimit(rateKey, 1, 60_000)) throw new Error("rate limit allowed an excessive request");
+
 const config = withDefaults(
   "welcome",
   JSON.parse('{"__proto__":{"polluted":true},"embed":{"constructor":{"polluted":true}}}'),
@@ -34,4 +44,4 @@ if ((config["__proto__"] as { polluted?: boolean } | undefined)?.polluted) {
   throw new Error("unsafe config key persisted");
 }
 
-console.log("[Glow Test] security headers, origin hardening and config-key checks passed");
+console.log("[Glow Test] security headers, origin hardening, rate-limit, and config-key checks passed");
