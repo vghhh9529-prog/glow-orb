@@ -217,6 +217,7 @@ async function saveTicketRecord(input: {
     : database().from("guild_items").insert(record);
   const { error } = await query;
   if (error) console.error(`[Glow Bot] Failed to save ticket ${input.channelId}: ${error.message}`);
+  return { error };
 }
 
 async function buildTicketEmbed(guildName: string, creatorId: string, status: "open" | "closed", priority = "normal") {
@@ -462,6 +463,49 @@ async function handleTicketPrioritySelect(interaction: StringSelectMenuInteracti
   return interaction.update({ content: `Priority updated to **${nextPriority}**.`, components: [] });
 }
 
+async function closeTicketAfterAck(
+  interaction: ButtonInteraction,
+  ticket: { id?: string; name?: string | null; data?: Record<string, unknown> },
+  ticketData: Record<string, unknown>,
+  config: Record<string, unknown>,
+) {
+  const transcriptPromise = postTicketTranscript(interaction.channel, ticket, config).catch((error: unknown) => {
+    console.error("[Glow Bot] Ticket transcript failed during close", error);
+  });
+  if (interaction.channel && "setName" in interaction.channel) {
+    await interaction.channel.setName(`closed-${String(ticket.name ?? "ticket").replace(/^closed-/, "")}`.slice(0, 100)).catch((error: unknown) => {
+      console.error("[Glow Bot] Ticket channel rename failed", error);
+    });
+  }
+  if (interaction.channel && "permissionOverwrites" in interaction.channel) {
+    await interaction.channel.permissionOverwrites.edit(String(ticketData.creatorId), { SendMessages: false }).catch((error: unknown) => {
+      console.error("[Glow Bot] Ticket close permission update failed", error);
+    });
+  }
+  const { error: saveError } = await saveTicketRecord({
+    guildId: interaction.guild!.id,
+    channelId: interaction.channelId,
+    creatorId: String(ticketData.creatorId ?? ""),
+    creatorName: String(ticketData.creatorName ?? "member"),
+    status: "closed",
+    id: ticket.id,
+    claimedBy: String(ticketData.claimedBy ?? "") || null,
+    priority: String(ticketData.priority ?? "normal"),
+    categoryId: String(ticketData.categoryId ?? ""),
+    subject: String(ticketData.subject ?? "General support"),
+    createdAt: String(ticketData.createdAt ?? "") || undefined,
+  });
+  if (saveError) return { ok: false as const, message: "Ticket was closed, but its status could not be saved. Please check the database logs." };
+  await transcriptPromise;
+  await logGuildEvent({ guild: interaction.guild!, event: "ticket", title: "Ticket closed", description: `<#${interaction.channelId}> was closed by <@${interaction.user.id}>.`, fields: [{ name: "Transcript", value: config.transcriptEnabled === false ? "Disabled" : "Saved when available", inline: true }] });
+  const embed = await buildTicketEmbed(interaction.guild!.name, String(ticketData.creatorId ?? interaction.user.id), "closed", String(ticketData.priority ?? "normal"));
+  return {
+    ok: true as const,
+    embed,
+    components: [new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId("glow_ticket_reopen").setLabel("Reopen").setEmoji("↩️").setStyle(ButtonStyle.Success), new ButtonBuilder().setCustomId("glow_ticket_delete").setLabel("Delete ticket").setEmoji("🗑️").setStyle(ButtonStyle.Danger))],
+  };
+}
+
 async function handleTicketButton(interaction: ButtonInteraction) {
   if (!interaction.guild) return interaction.reply({ content: "Tickets are available inside a server only.", ephemeral: true });
   const settings = await ticketConfig(interaction.guild.id);
@@ -507,12 +551,13 @@ async function handleTicketButton(interaction: ButtonInteraction) {
   }
   if (interaction.customId === "glow_ticket_close") {
     if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageChannels) && String(ticketData.creatorId) !== interaction.user.id) return interaction.reply({ content: "Only the ticket creator or staff can close this ticket.", ephemeral: true });
-    await postTicketTranscript(interaction.channel, ticket, config);
-    if (interaction.channel && "setName" in interaction.channel) await interaction.channel.setName(`closed-${String(ticket.name ?? "ticket").replace(/^closed-/, "")}`.slice(0, 100)).catch(() => undefined);
-    if (interaction.channel && "permissionOverwrites" in interaction.channel) await interaction.channel.permissionOverwrites.edit(String(ticketData.creatorId), { SendMessages: false }).catch(() => undefined);
-    await saveTicketRecord({ guildId: interaction.guild.id, channelId: interaction.channelId, creatorId: String(ticketData.creatorId ?? ""), creatorName: String(ticketData.creatorName ?? "member"), status: "closed", id: ticket.id, claimedBy: String(ticketData.claimedBy ?? "") || null, priority: String(ticketData.priority ?? "normal"), categoryId: String(ticketData.categoryId ?? ""), subject: String(ticketData.subject ?? "General support"), createdAt: String(ticketData.createdAt ?? "") || undefined });
-    await logGuildEvent({ guild: interaction.guild, event: "ticket", title: "Ticket closed", description: `<#${interaction.channelId}> was closed by <@${interaction.user.id}>.`, fields: [{ name: "Transcript", value: config.transcriptEnabled === false ? "Disabled" : "Saved when available", inline: true }] });
-    return interaction.update({ embeds: [await buildTicketEmbed(interaction.guild.name, String(ticketData.creatorId ?? interaction.user.id), "closed", String(ticketData.priority ?? "normal"))], components: [new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId("glow_ticket_reopen").setLabel("Reopen").setEmoji("↩️").setStyle(ButtonStyle.Success), new ButtonBuilder().setCustomId("glow_ticket_delete").setLabel("Delete ticket").setEmoji("🗑️").setStyle(ButtonStyle.Danger))] });
+    await interaction.deferUpdate();
+    const closeResult = await closeTicketAfterAck(interaction, ticket, ticketData, config);
+    if (!closeResult.ok) {
+      await interaction.followUp({ content: closeResult.message, ephemeral: true }).catch(() => undefined);
+      return;
+    }
+    return interaction.editReply({ embeds: [closeResult.embed], components: closeResult.components });
   }
   return interaction.reply({ content: "Unknown ticket action.", ephemeral: true });
 }
