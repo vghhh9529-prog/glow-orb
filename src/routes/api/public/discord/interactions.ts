@@ -26,7 +26,7 @@ export const Route = createFileRoute("/api/public/discord/interactions")({
 
         if (payload.type === 1) return pingResponse();
         if (payload.type !== 2) return new Response("unsupported interaction", { status: 400 });
-        if (payload.data?.name === "user" || payload.data?.name === "profile") {
+        if (payload.data?.name === "user" || payload.data?.name === "profile" || payload.data?.name === "balance") {
           void handleDiscordCardCommand(payload)
             .then((card) => (card ? sendDiscordCardFollowup(payload, card) : undefined))
             .catch((error: unknown) => console.error("[Glow HTTP] Discord card follow-up failed", error));

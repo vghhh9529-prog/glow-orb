@@ -188,6 +188,21 @@ function stat(ctx: CanvasRenderingContext2D, label: string, value: string, x: nu
   text(ctx, value, x + 20, y + 59, 22, "#f2f3ff", "800");
 }
 
+function glowCoin(ctx: CanvasRenderingContext2D, x: number, y: number, size: number) {
+  const gradient = ctx.createLinearGradient(x, y, x + size, y + size);
+  gradient.addColorStop(0, "#b9aaff");
+  gradient.addColorStop(0.52, "#7c5cff");
+  gradient.addColorStop(1, "#19c8ff");
+  ctx.fillStyle = gradient;
+  ctx.beginPath();
+  ctx.arc(x + size / 2, y + size / 2, size / 2, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "rgba(255,255,255,.72)";
+  ctx.lineWidth = Math.max(2, size * 0.045);
+  ctx.stroke();
+  text(ctx, "G", x + size * 0.34, y + size * 0.68, size * 0.42, "#fff", "800");
+}
+
 export async function renderUserCard(stats: GlowCardStats) {
   const width = 1200;
   const height = 630;
@@ -232,6 +247,39 @@ export async function renderProfileCard(stats: GlowCardStats) {
   stat(ctx, "Server time", relativeTime(stats.serverJoinedAt), 72, 505, 350);
   stat(ctx, "Community", stats.serverName?.slice(0, 18) || "Glow", 444, 505, 310);
   stat(ctx, "Status", "Online", 776, 505, 352);
+  return canvas.toBuffer("image/png");
+}
+
+export interface GlowBalanceCardStats {
+  username: string;
+  displayName: string;
+  userId: string;
+  avatarUrl?: string | null;
+  balance: number;
+  streak: number;
+  totalEarned: number;
+}
+
+export async function renderBalanceCard(stats: GlowBalanceCardStats) {
+  const width = 1200;
+  const height = 630;
+  const canvas = createCanvas(width, height);
+  const ctx = canvas.getContext("2d");
+  cardShell(ctx, width, height, "GLOW BALANCE");
+  const image = await remoteImage(stats.avatarUrl);
+  avatar(ctx, image, 72, 166, 148);
+  text(ctx, stats.displayName.slice(0, 28), 260, 215, 38, "#f5f4ff", "800");
+  text(ctx, `@${stats.username}`.slice(0, 32), 262, 252, 20, "#a9acc8", "600");
+  text(ctx, `ID  ${stats.userId}`, 262, 286, 14, "#777d9e", "500");
+
+  glowCoin(ctx, 72, 350, 94);
+  text(ctx, "GLOW BALANCE", 194, 382, 13, "#858daf", "700");
+  text(ctx, stats.balance.toLocaleString("en-US"), 194, 435, 54, "#f5f4ff", "800");
+  text(ctx, "Glow", 198, 464, 20, "#a996ff", "700");
+
+  stat(ctx, "Daily streak", String(stats.streak), 72, 510, 300);
+  stat(ctx, "Total earned", stats.totalEarned.toLocaleString("en-US"), 396, 510, 340);
+  stat(ctx, "Currency", "Glow", 760, 510, 368);
   return canvas.toBuffer("image/png");
 }
 

@@ -8,7 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useI18n } from "@/lib/i18n";
 import { userAvatarUrl } from "@/lib/discord";
 import { toast } from "sonner";
-import { Coins, Flame, LogOut, Gift, ArrowLeft, Trophy, Sparkles, Server, Zap } from "lucide-react";
+import { Flame, LogOut, Gift, ArrowLeft, Trophy, Sparkles, Server, Zap } from "lucide-react";
 
 export const Route = createFileRoute("/dashboard/account")({
   head: () => ({
@@ -24,6 +24,19 @@ export const Route = createFileRoute("/dashboard/account")({
   }),
   component: Account,
 });
+
+function GlowCoinIcon({ className = "size-10" }: { className?: string }) {
+  return (
+    <span
+      className={`inline-flex shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-violet-300 via-primary to-cyan-300 p-1 shadow-[0_0_24px_hsl(var(--primary)/0.35)] ${className}`}
+      aria-hidden="true"
+    >
+      <span className="flex size-full items-center justify-center rounded-full border border-white/50 bg-[#171531] text-[0.72em] font-black text-white">
+        G
+      </span>
+    </span>
+  );
+}
 
 function Account() {
   const { t } = useI18n();
@@ -129,44 +142,66 @@ function Account() {
           </>
         )}
 
-        <div className="mt-6 grid gap-4 md:grid-cols-3">
-          <Card className="border-primary/40 bg-primary/5 p-5">
-            <Coins className="size-5 text-primary" />
-            <p className="mt-2 text-xs text-muted-foreground">{t("الرصيد", "Balance")}</p>
-            <p className="text-2xl font-bold text-foreground">{wallet.data?.balance ?? 0}</p>
-          </Card>
-          <Card className="border-border/60 bg-card/50 p-5">
-            <Flame className="size-5 text-primary" />
-            <p className="mt-2 text-xs text-muted-foreground">{t("الستريك", "Streak")}</p>
-            <p className="text-2xl font-bold text-foreground">{wallet.data?.streak ?? 0}</p>
-          </Card>
-          <Card className="border-border/60 bg-card/50 p-5">
-            <Gift className="size-5 text-primary" />
-            <p className="mt-2 text-xs text-muted-foreground">
-              {t("إجمالي المكتسب", "Total earned")}
-            </p>
-            <p className="text-2xl font-bold text-foreground">{wallet.data?.totalEarned ?? 0}</p>
-          </Card>
-        </div>
-
-        <Card className="mt-6 flex flex-wrap items-center justify-between gap-3 border-border/60 bg-card/50 p-6">
-          <div>
-            <p className="font-semibold text-foreground">{t("المكافأة اليومية", "Daily reward")}</p>
-            <p className="text-sm text-muted-foreground">
-              {wallet.data?.canClaim
-                ? t("جاهزة للاستلام الآن!", "Ready to claim now!")
-                : next
-                  ? t(`متاحة في ${next.toLocaleString()}`, `Available at ${next.toLocaleString()}`)
-                  : t("كل 12 ساعة", "Every 12 hours")}
-            </p>
+        <section aria-labelledby="glow-wallet-title" className="mt-6">
+          <div className="mb-3 flex items-end justify-between gap-3">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.2em] text-primary">Glow currency</p>
+              <h2 id="glow-wallet-title" className="mt-1 text-lg font-bold text-foreground">
+                {t("محفظة Glow", "Your Glow wallet")}
+              </h2>
+            </div>
+            <GlowCoinIcon className="size-9" />
           </div>
-          <Button
-            disabled={!wallet.data?.canClaim || claim.isPending}
-            onClick={() => claim.mutate()}
-          >
-            {t("استلم", "Claim")}
-          </Button>
-        </Card>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <Card className="relative overflow-hidden border-primary/40 bg-gradient-to-br from-primary/15 via-primary/5 to-card/50 p-5">
+              <div className="absolute -right-6 -top-8 size-24 rounded-full bg-primary/20 blur-2xl" />
+              <div className="relative flex items-center gap-3">
+                <GlowCoinIcon />
+                <div>
+                  <p className="text-xs text-muted-foreground">{t("الرصيد", "Balance")}</p>
+                  <p className="mt-1 text-2xl font-black text-foreground">{Number(wallet.data?.balance ?? 0).toLocaleString("en-US")}</p>
+                </div>
+              </div>
+            </Card>
+            <Card className="border-border/60 bg-card/50 p-5">
+              <Flame className="size-5 text-primary" />
+              <p className="mt-2 text-xs text-muted-foreground">{t("الستريك", "Streak")}</p>
+              <p className="text-2xl font-bold text-foreground">{wallet.data?.streak ?? 0}</p>
+            </Card>
+            <Card className="border-border/60 bg-card/50 p-5">
+              <Gift className="size-5 text-primary" />
+              <p className="mt-2 text-xs text-muted-foreground">{t("إجمالي المكتسب", "Total earned")}</p>
+              <p className="text-2xl font-bold text-foreground">{Number(wallet.data?.totalEarned ?? 0).toLocaleString("en-US")}</p>
+            </Card>
+          </div>
+
+          <Card className="mt-4 overflow-hidden border-primary/25 bg-gradient-to-r from-primary/10 via-card/60 to-cyan-400/5 p-5 sm:p-6">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex min-w-0 items-center gap-3">
+                <span className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-primary/15 text-primary">
+                  <Gift className="size-5" />
+                </span>
+                <div className="min-w-0">
+                  <p className="font-semibold text-foreground">{t("هدية Daily", "Daily gift")}</p>
+                  <p className="text-sm leading-6 text-muted-foreground">
+                    {wallet.data?.canClaim
+                      ? t("جاهزة للاستلام الآن!", "Ready to claim now!")
+                      : next
+                        ? t(`متاحة في ${next.toLocaleString()}`, `Available at ${next.toLocaleString()}`)
+                        : t("تتجدد كل 12 ساعة", "Renews every 12 hours")}
+                  </p>
+                </div>
+              </div>
+              <Button
+                className="w-full shrink-0 sm:w-auto"
+                disabled={!wallet.data?.canClaim || claim.isPending}
+                onClick={() => claim.mutate()}
+              >
+                {claim.isPending ? t("جارٍ الاستلام...", "Claiming...") : t("استلم الهدية", "Claim gift")}
+              </Button>
+            </div>
+          </Card>
+        </section>
 
         {profile.data && profile.data.servers.length > 0 && (
           <>

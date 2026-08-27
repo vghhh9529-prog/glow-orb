@@ -21,7 +21,12 @@ import {
   updateGuildMember,
 } from "./discord-api.server";
 import { ensureGuildRow } from "./guilds.server";
-import { discordAccountCreatedAt, renderProfileCard, renderUserCard } from "./card-renderer.server";
+import {
+  discordAccountCreatedAt,
+  renderBalanceCard,
+  renderProfileCard,
+  renderUserCard,
+} from "./card-renderer.server";
 
 const DAILY_COOLDOWN_MS = 12 * 60 * 60_000;
 const DAILY_BASE = 250;
@@ -400,6 +405,7 @@ export interface DiscordCardInteractionResult {
   buffer: Buffer;
   filename: string;
   title: string;
+  description?: string;
 }
 
 export async function sendDiscordCardFollowup(
@@ -415,7 +421,7 @@ export async function sendDiscordCardFollowup(
       embeds: [
         {
           title: card.title,
-          description: "English profile card · live Discord and Glow data",
+          description: card.description ?? "English profile card · live Discord and Glow data",
           color: 0x7c5cff,
           image: { url: `attachment://${card.filename}` },
           footer: { text: "Glow · Community progression" },
@@ -437,9 +443,37 @@ export async function handleDiscordCardCommand(
   payload: DiscordInteractionPayload,
 ): Promise<DiscordCardInteractionResult | null> {
   const command = payload.data?.name;
-  if (command !== "user" && command !== "profile") return null;
+  if (command !== "user" && command !== "profile" && command !== "balance") return null;
   const caller = interactionUser(payload);
   if (!caller) throw new Error("Missing interaction user");
+
+  if (command === "balance") {
+    const targetId = interactionOption<string>(payload, "user") ?? caller.id;
+    const target = targetId === caller.id ? caller : await fetchDiscordUser(targetId);
+    if (!target) throw new Error("Target Discord user was not found");
+    await ensureUser(target);
+    const database = await db();
+    const { data: wallet } = await database
+      .from("glow_wallets")
+      .select("balance, streak, total_earned")
+      .eq("user_id", target.id)
+      .maybeSingle();
+    return {
+      buffer: await renderBalanceCard({
+        username: target.username,
+        displayName: target.global_name ?? target.username,
+        userId: target.id,
+        avatarUrl: accountAvatarUrl(target),
+        balance: Number(wallet?.balance ?? 0),
+        streak: Number(wallet?.streak ?? 0),
+        totalEarned: Number(wallet?.total_earned ?? 0),
+      }),
+      filename: "glow-balance-card.png",
+      title: "Glow Balance",
+      description: "English Glow currency card · live balance data",
+    };
+  }
+
   const targetId = command === "user" ? interactionOption<string>(payload, "member") ?? caller.id : caller.id;
   const target = targetId === caller.id ? caller : await fetchDiscordUser(targetId);
   if (!target) throw new Error("Target Discord user was not found");

@@ -1123,7 +1123,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return;
     }
     const payload = interactionPayload(interaction);
-    if (interaction.commandName === "user" || interaction.commandName === "profile") {
+    if (interaction.commandName === "user" || interaction.commandName === "profile" || interaction.commandName === "balance") {
       const card = await handleDiscordCardCommand(payload);
       if (!card) throw new Error("Card command did not return an image");
       await interaction.reply({
@@ -1131,7 +1131,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           new EmbedBuilder()
             .setColor(0x7c5cff)
             .setTitle(card.title)
-            .setDescription("English profile card · live Discord and Glow data")
+            .setDescription(card.description ?? "English profile card · live Discord and Glow data")
             .setImage(`attachment://${card.filename}`)
             .setFooter({ text: "Glow · Community progression" }),
         ],
