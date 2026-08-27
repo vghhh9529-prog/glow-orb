@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import { MODULE_KEYS } from "../src/lib/discord";
 import { MODULE_DEFAULTS, withDefaults } from "../src/lib/module-defaults";
 
@@ -17,4 +18,8 @@ if ((logging.colors as Record<string, unknown>).message !== "#ffffff") throw new
 const tickets = withDefaults("tickets", { maxOpenPerUser: 2, allowPriorityChange: false });
 if (tickets.maxOpenPerUser !== 2 || tickets.allowPriorityChange !== false) throw new Error("Ticket defaults did not merge");
 
-console.log("security/ticket defaults ok");
+const botSource = await readFile(new URL("../bot/index.ts", import.meta.url), "utf8");
+if (botSource.includes('.setEmoji("⚑")')) throw new Error("Invalid ticket emoji regression detected");
+if (!botSource.includes('.setEmoji("📌")')) throw new Error("Ticket priority emoji fallback is missing");
+
+console.log("security/ticket defaults and emoji checks ok");

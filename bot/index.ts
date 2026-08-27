@@ -345,7 +345,25 @@ async function createTicketFromModal(interaction: ModalSubmitInteraction) {
   const embed = await buildTicketEmbed(interaction.guild.name, interaction.user.id, "open", "normal");
   embed.setTitle(`Glow Support · ${subject}`).addFields({ name: "Opened by", value: `<@${interaction.user.id}>`, inline: true }, { name: "Ticket ID", value: saved?.id ? `#${saved.id}` : channel.id, inline: true });
   if (details) embed.addFields({ name: "Initial details", value: details.slice(0, 1024) });
-  await channel.send({ content: staffMentions || undefined, allowedMentions: { parse: [], users: [interaction.user.id], roles: supportRoleIds }, embeds: [embed], components: [new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId("glow_ticket_claim").setLabel("Claim").setEmoji("🛠️").setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId("glow_ticket_priority").setLabel("Priority").setEmoji("⚑").setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId("glow_ticket_close").setLabel("Close").setEmoji("🔒").setStyle(ButtonStyle.Danger))] });
+  try {
+    await channel.send({
+      content: staffMentions || undefined,
+      allowedMentions: { parse: [], users: [interaction.user.id], roles: supportRoleIds },
+      embeds: [embed],
+      components: [
+        new ActionRowBuilder<ButtonBuilder>().addComponents(
+          new ButtonBuilder().setCustomId("glow_ticket_claim").setLabel("Claim").setEmoji("🛠️").setStyle(ButtonStyle.Secondary),
+          new ButtonBuilder().setCustomId("glow_ticket_priority").setLabel("Priority").setEmoji("📌").setStyle(ButtonStyle.Secondary),
+          new ButtonBuilder().setCustomId("glow_ticket_close").setLabel("Close").setEmoji("🔒").setStyle(ButtonStyle.Danger),
+        ),
+      ],
+    });
+  } catch (error) {
+    console.error("[Glow Bot] Ticket welcome message failed", error);
+    if (saved?.id) await database().from("guild_items").delete().eq("id", saved.id).eq("guild_id", interaction.guild.id);
+    await channel.delete("Glow ticket setup failed").catch(() => undefined);
+    return interaction.editReply("Could not finish opening the ticket. Check Glow's message and emoji permissions, then try again.");
+  }
   await logGuildEvent({ guild: interaction.guild, event: "ticket", title: "Ticket opened", description: `<@${interaction.user.id}> opened **${subject}**.`, fields: [{ name: "Channel", value: `<#${channel.id}>`, inline: true }, { name: "Priority", value: "normal", inline: true }] });
   return interaction.editReply(`Your private ticket is ready: <#${channel.id}>`);
 }
@@ -372,7 +390,7 @@ async function handleTicketButton(interaction: ButtonInteraction) {
     await logGuildEvent({ guild: interaction.guild, event: "ticket", title: "Ticket priority changed", description: `<#${interaction.channelId}> is now **${nextPriority}** priority.`, fields: [{ name: "Changed by", value: `<@${interaction.user.id}>`, inline: true }] });
     const updated = await buildTicketEmbed(interaction.guild.name, String(ticketData.creatorId ?? interaction.user.id), String(ticketData.status ?? "open") === "closed" ? "closed" : "open", nextPriority);
     updated.setTitle(`Glow Support · ${String(ticketData.subject ?? "General support")}`);
-    return interaction.update({ embeds: [updated], components: [new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId("glow_ticket_claim").setLabel("Claim").setEmoji("🛠️").setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId("glow_ticket_priority").setLabel(`Priority: ${nextPriority}`).setEmoji("⚑").setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId("glow_ticket_close").setLabel("Close").setEmoji("🔒").setStyle(ButtonStyle.Danger))] });
+    return interaction.update({ embeds: [updated], components: [new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId("glow_ticket_claim").setLabel("Claim").setEmoji("🛠️").setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId("glow_ticket_priority").setLabel(`Priority: ${nextPriority}`).setEmoji("📌").setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId("glow_ticket_close").setLabel("Close").setEmoji("🔒").setStyle(ButtonStyle.Danger))] });
   }
   if (interaction.customId === "glow_ticket_delete") {
     if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageChannels) && String(ticketData.creatorId) !== interaction.user.id) return interaction.reply({ content: "Only the ticket creator or staff can delete this ticket.", ephemeral: true });
@@ -393,7 +411,7 @@ async function handleTicketButton(interaction: ButtonInteraction) {
     if (interaction.channel && "setName" in interaction.channel) await interaction.channel.setName(String(ticket.name ?? "ticket").replace(/^closed-/, "")).catch(() => undefined);
     await saveTicketRecord({ guildId: interaction.guild.id, channelId: interaction.channelId, creatorId: String(ticketData.creatorId ?? ""), creatorName: String(ticketData.creatorName ?? "member"), status: "open", id: ticket.id, claimedBy: String(ticketData.claimedBy ?? "") || null, priority: String(ticketData.priority ?? "normal"), categoryId: String(ticketData.categoryId ?? ""), subject: String(ticketData.subject ?? "General support"), createdAt: String(ticketData.createdAt ?? "") || undefined });
     await logGuildEvent({ guild: interaction.guild, event: "ticket", title: "Ticket reopened", description: `<#${interaction.channelId}> was reopened by <@${interaction.user.id}>.` });
-    return interaction.update({ embeds: [await buildTicketEmbed(interaction.guild.name, String(ticketData.creatorId ?? interaction.user.id), "open", String(ticketData.priority ?? "normal"))], components: [new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId("glow_ticket_claim").setLabel("Claim").setEmoji("🛠️").setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId("glow_ticket_priority").setLabel(`Priority: ${String(ticketData.priority ?? "normal")}`).setEmoji("⚑").setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId("glow_ticket_close").setLabel("Close").setEmoji("🔒").setStyle(ButtonStyle.Danger))] });
+    return interaction.update({ embeds: [await buildTicketEmbed(interaction.guild.name, String(ticketData.creatorId ?? interaction.user.id), "open", String(ticketData.priority ?? "normal"))], components: [new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId("glow_ticket_claim").setLabel("Claim").setEmoji("🛠️").setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId("glow_ticket_priority").setLabel(`Priority: ${String(ticketData.priority ?? "normal")}`).setEmoji("📌").setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId("glow_ticket_close").setLabel("Close").setEmoji("🔒").setStyle(ButtonStyle.Danger))] });
   }
   if (interaction.customId === "glow_ticket_close") {
     if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageChannels) && String(ticketData.creatorId) !== interaction.user.id) return interaction.reply({ content: "Only the ticket creator or staff can close this ticket.", ephemeral: true });
