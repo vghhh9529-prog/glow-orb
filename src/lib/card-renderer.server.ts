@@ -301,17 +301,15 @@ export function renderTransferCodeCard(stats: GlowTransferCodeCardStats) {
   text(ctx, `${stats.senderName.slice(0, 24)}  →  ${stats.recipientName.slice(0, 24)}`, 72, 222, 18, "#a9acc8", "600");
   text(ctx, `${stats.amount.toLocaleString("en-US")} Glow Coin  ·  Expires in ${stats.expiresInMinutes} minutes`, 72, 254, 16, "#858daf", "600");
 
-  roundedRect(ctx, 160, 292, 880, 220, 28);
+  roundedRect(ctx, 160, 316, 880, 160, 28);
   ctx.fillStyle = "rgba(124,92,255,.14)";
   ctx.fill();
   ctx.strokeStyle = "rgba(185,170,255,.42)";
   ctx.lineWidth = 2;
   ctx.stroke();
-  const firstLine = `${stats.code[0] ?? "0"}    ${stats.code[1] ?? "0"}`;
-  const secondLine = `${stats.code[2] ?? "0"}    ${stats.code[3] ?? "0"}`;
+  const codeLine = stats.code.slice(0, 4).split("").join("    ");
   ctx.textAlign = "center";
-  text(ctx, firstLine, width / 2, 388, 76, "#f5f4ff", "800");
-  text(ctx, secondLine, width / 2, 480, 76, "#b9aaff", "800");
+  text(ctx, codeLine, width / 2, 418, 82, "#f5f4ff", "800");
   ctx.textAlign = "start";
   text(ctx, "This code is private. Never share it with anyone else.", 72, 570, 16, "#858daf", "600");
   return canvas.toBuffer("image/png");

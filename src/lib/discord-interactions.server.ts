@@ -515,15 +515,7 @@ export async function sendDiscordTransferFollowup(
     "payload_json",
     JSON.stringify({
       allowed_mentions: { parse: [] },
-      embeds: [
-        {
-          title: transfer.title,
-          description: transfer.description,
-          color: 0x7c5cff,
-          image: { url: `attachment://${transfer.filename}` },
-          footer: { text: "Glow Coin · Confirmation expires in 5 minutes" },
-        },
-      ],
+      attachments: [{ id: "0", filename: transfer.filename }],
       flags: 64,
     }),
   );

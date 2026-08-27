@@ -1298,14 +1298,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
         await interaction.reply({ content: transfer.message, ephemeral: true });
       } else {
         await interaction.reply({
-          embeds: [
-            new EmbedBuilder()
-              .setColor(0x7c5cff)
-              .setTitle(transfer.result.title)
-              .setDescription(transfer.result.description)
-              .setImage(`attachment://${transfer.result.filename}`)
-              .setFooter({ text: "Glow Coin · Confirmation expires in 5 minutes" }),
-          ],
           files: [{ attachment: transfer.result.buffer, name: transfer.result.filename }],
           ephemeral: true,
         });
@@ -1577,13 +1569,13 @@ async function handleGlowCoinMessage(message: Message) {
   if (/^glow\b/i.test(content)) {
     const match = content.match(/^glow\s+<@!?(\d{15,25})>\s+(\d+)$/i);
     if (!match) {
-      await message.reply({ content: "Usage: `glow @user amount`", allowedMentions: { parse: [] } }).catch(() => undefined);
+      if (message.deletable) await message.delete().catch(() => undefined);
       return true;
     }
     const [, recipientId, amountText] = match;
     const recipient = message.mentions.users.get(recipientId) ?? await message.client.users.fetch(recipientId).catch(() => null);
     if (!recipient) {
-      await message.reply({ content: "I could not find that Discord user.", allowedMentions: { parse: [] } }).catch(() => undefined);
+      if (message.deletable) await message.delete().catch(() => undefined);
       return true;
     }
     const challenge = await createGlowTransferChallenge({
@@ -1594,14 +1586,7 @@ async function handleGlowCoinMessage(message: Message) {
       amount: Number(amountText),
     });
     if (!challenge.ok) {
-      const errorMessage = challenge.reason === "self"
-        ? "You cannot transfer Glow Coin to yourself."
-        : challenge.reason === "invalid_amount"
-          ? "Enter a whole Glow Coin amount between 1 and 1,000,000,000."
-          : challenge.reason === "insufficient_funds"
-            ? `You do not have enough Glow Coin. Your balance is ${Number(challenge.balance ?? 0).toLocaleString("en-US")}.`
-            : "The transfer could not be started. Please try again.";
-      await message.reply({ content: errorMessage, allowedMentions: { parse: [] } }).catch(() => undefined);
+      if (message.deletable) await message.delete().catch(() => undefined);
       return true;
     }
     const transfer = challenge.challenge;
@@ -1613,14 +1598,13 @@ async function handleGlowCoinMessage(message: Message) {
       expiresInMinutes: 5,
     });
     try {
-      await message.author.send({
-        content: "Glow Coin transfer confirmation. Enter the four digits in the original server channel within 5 minutes.",
+      await message.channel.send({
         files: [{ attachment: card, name: "glow-transfer-confirmation.png" }],
       });
-      await message.reply({ content: "✅ I sent the confirmation image to your DMs. Enter the 4 digits here within 5 minutes.", allowedMentions: { parse: [] } }).catch(() => undefined);
       if (message.deletable) await message.delete().catch(() => undefined);
-    } catch {
-      await message.reply({ content: "I could not send you a DM. Enable DMs for this server and run the transfer again.", allowedMentions: { parse: [] } }).catch(() => undefined);
+    } catch (error) {
+      console.error("Glow Coin transfer confirmation image failed", error);
+      if (message.deletable) await message.delete().catch(() => undefined);
     }
     return true;
   }
@@ -1634,21 +1618,7 @@ async function handleGlowCoinMessage(message: Message) {
   });
   if (confirmation.reason === "none") return false;
   if (message.deletable) await message.delete().catch(() => undefined);
-  if (!confirmation.ok) {
-    const errorMessage = confirmation.reason === "invalid_code"
-      ? "That confirmation code is incorrect. Try again with the code from your Glow Coin image."
-      : confirmation.reason === "too_many_attempts"
-        ? "Too many incorrect attempts. Start the transfer again."
-        : confirmation.reason === "expired"
-          ? "That transfer code expired. Start the transfer again."
-          : "The transfer could not be completed. Please try again.";
-    await message.channel.send({ content: errorMessage, allowedMentions: { parse: [] } }).catch(() => undefined);
-    return true;
-  }
-  await message.channel.send({
-    content: `✅ **${confirmation.senderName}** transferred **${confirmation.amount.toLocaleString("en-US")} Glow Coin** to **${confirmation.recipientName}**.`,
-    allowedMentions: { parse: [] },
-  }).catch(() => undefined);
+  if (!confirmation.ok) return true;
   return true;
 }
 
