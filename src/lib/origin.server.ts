@@ -1,5 +1,20 @@
-const DEFAULT_PUBLIC_ORIGIN = "https://glowbot.up.railway.app";
+export const DEFAULT_PUBLIC_ORIGIN = "https://glowbot.up.railway.app";
 const DISCORD_CALLBACK_PATH = "/api/public/auth/discord/callback";
+
+function isValidPublicOrigin(value: string | undefined): string | null {
+  if (!value) return null;
+  try {
+    const parsed = new URL(value);
+    if (parsed.protocol !== "https:" || parsed.hostname.endsWith(".lovable.app")) return null;
+    return parsed.origin;
+  } catch {
+    return null;
+  }
+}
+
+export function configuredPublicOrigin(): string {
+  return isValidPublicOrigin(process.env["PUBLIC_APP_URL"]?.trim()) ?? DEFAULT_PUBLIC_ORIGIN;
+}
 const DEFAULT_DISCORD_REDIRECT_URI = `${DEFAULT_PUBLIC_ORIGIN}${DISCORD_CALLBACK_PATH}`;
 
 function configuredRedirectUri(request?: Request) {
@@ -22,15 +37,8 @@ function configuredRedirectUri(request?: Request) {
 }
 
 export function requestOrigin(request: Request): string {
-  const configured = process.env["PUBLIC_APP_URL"]?.trim();
-  if (configured) {
-    try {
-      const parsed = new URL(configured);
-      if (parsed.protocol === "https:") return parsed.origin;
-    } catch {
-      // Fall through to the server-owned Request URL.
-    }
-  }
+  const configured = isValidPublicOrigin(process.env["PUBLIC_APP_URL"]?.trim());
+  if (configured) return configured;
 
   const requestUrl = new URL(request.url);
   // Railway should terminate TLS before the app. If an old HTTP environment

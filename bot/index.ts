@@ -47,6 +47,7 @@ import {
   updateMessageGuardCounter,
 } from "../src/lib/message-guard.server";
 import { SLASH_COMMANDS } from "../src/lib/slash-commands";
+import { configuredPublicOrigin } from "../src/lib/origin.server";
 import {
   isScamReviewButton,
   reviewScamReport,
@@ -54,10 +55,7 @@ import {
   SCAM_REVIEW_CHANNEL_ID,
 } from "../src/lib/scam-reports.server";
 
-const SITE_URL = (
-  process.env["PUBLIC_APP_URL"] ??
-  "https://id-preview--fa584a01-062d-40c8-a629-78cea86c73db.lovable.app"
-).replace(/\/$/, "");
+const SITE_URL = configuredPublicOrigin();
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,

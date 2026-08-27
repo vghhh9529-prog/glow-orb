@@ -1,6 +1,7 @@
 import { handleDiscordInteraction } from "../src/lib/discord-interactions.server";
 import { SLASH_COMMANDS } from "../src/lib/slash-commands";
 import { COMMAND_CATALOG } from "../src/lib/command-catalog";
+import { configuredPublicOrigin, DEFAULT_PUBLIC_ORIGIN } from "../src/lib/origin.server";
 
 const required = [
   "daily",
@@ -68,6 +69,14 @@ for (const name of required) {
   if (!names.includes(name)) throw new Error(`Missing slash command: ${name}`);
 }
 
+const originalPublicAppUrl = process.env["PUBLIC_APP_URL"];
+process.env["PUBLIC_APP_URL"] = "https://id-preview--fa584a01-062d-40c8-a629-78cea86c73db.lovable.app";
+if (configuredPublicOrigin() !== DEFAULT_PUBLIC_ORIGIN) {
+  throw new Error("Production dashboard origin must not use the old Lovable preview domain");
+}
+if (originalPublicAppUrl === undefined) delete process.env["PUBLIC_APP_URL"];
+else process.env["PUBLIC_APP_URL"] = originalPublicAppUrl;
+
 const response = await handleDiscordInteraction(
   {
     type: 2,
@@ -126,4 +135,4 @@ if (invalidBody.type !== 4 || !invalidText.includes("اختر عضواً")) {
   throw new Error("Invalid option smoke response is invalid");
 }
 
-console.log(`[Glow Test] ${names.length} slash commands registered; /help, permission denial, and invalid-option responses passed`);
+console.log(`[Glow Test] ${names.length} slash commands registered; /help, permission denial, invalid-option responses, and production origin fallback passed`);
