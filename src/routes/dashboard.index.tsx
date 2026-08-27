@@ -2,6 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { getMe, listGuilds } from "@/lib/api.functions";
 import { TopBar } from "@/components/glow/shell";
+import { GlowCoinIcon } from "@/components/glow/coin-icon";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -62,13 +63,22 @@ function Servers() {
     <div className="min-h-screen bg-background">
       <TopBar
         right={
-          <Link to="/dashboard/account" className="flex items-center gap-2">
-            <img
-              src={userAvatarUrl(me.data.id, me.data.avatar)}
-              alt=""
-              className="size-8 rounded-full ring-2 ring-primary/50"
-            />
-          </Link>
+          <div className="flex items-center gap-2">
+            <a
+              href="/dashboard/account#daily"
+              className="flex items-center gap-1.5 rounded-xl border border-primary/25 bg-primary/10 px-2 py-1.5 text-xs font-semibold text-primary transition hover:border-primary/50 hover:bg-primary/15 sm:px-3"
+            >
+              <GlowCoinIcon className="size-5" />
+              <span className="hidden sm:inline">{t("هدية Daily", "Daily gift")}</span>
+            </a>
+            <Link to="/dashboard/account" className="flex items-center gap-2">
+              <img
+                src={userAvatarUrl(me.data.id, me.data.avatar)}
+                alt=""
+                className="size-8 rounded-full ring-2 ring-primary/50"
+              />
+            </Link>
+          </div>
         }
       />
       <div className="mx-auto max-w-6xl animate-rise-in px-4 py-12 sm:py-16">

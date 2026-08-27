@@ -5,6 +5,18 @@ export const DAILY_BASE = 250;
 export const DAILY_STREAK_BONUS = 50;
 export const DAILY_STREAK_CAP = 10;
 
+export function dailyRewardForStreak(streak: number) {
+  const safeStreak = Number.isFinite(streak) ? Math.max(1, Math.floor(streak)) : 1;
+  return DAILY_BASE + Math.min(safeStreak, DAILY_STREAK_CAP) * DAILY_STREAK_BONUS;
+}
+
+export function dailyStreakForClaim(lastDailyAt: string | null | undefined, currentStreak: number, now = Date.now()) {
+  if (!lastDailyAt) return 1;
+  const last = new Date(lastDailyAt).getTime();
+  if (!Number.isFinite(last) || now >= last + 36 * 3600_000) return 1;
+  return Math.min(Math.max(0, Math.floor(currentStreak)) + 1, 999);
+}
+
 async function admin() {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   return supabaseAdmin;
@@ -24,12 +36,15 @@ export async function loadWallet() {
 
   const last = wallet?.last_daily_at ? new Date(wallet.last_daily_at).getTime() : 0;
   const nextAt = last + DAILY_COOLDOWN_HOURS * 3600_000;
+  const nextStreak = dailyStreakForClaim(wallet?.last_daily_at ?? null, Number(wallet?.streak ?? 0));
+  const nextReward = dailyRewardForStreak(nextStreak);
   return {
     balance: Number(wallet?.balance ?? 0),
     streak: wallet?.streak ?? 0,
     totalEarned: Number(wallet?.total_earned ?? 0),
     lastDailyAt: wallet?.last_daily_at ?? null,
     nextDailyAt: last ? new Date(nextAt).toISOString() : null,
+    nextReward,
     canClaim: Date.now() >= nextAt,
     history: history ?? [],
   };
@@ -49,10 +64,8 @@ export async function claimDaily() {
 
   // Streak continues when claimed within 36h of the last claim. The conditional
   // update below makes the cooldown check atomic across concurrent requests.
-  const keepStreak = last > 0 && now < last + 36 * 3600_000;
-  const streak = keepStreak ? Math.min((wallet?.streak ?? 0) + 1, 999) : 1;
-  const bonus = Math.min(streak, DAILY_STREAK_CAP) * DAILY_STREAK_BONUS;
-  const amount = DAILY_BASE + bonus;
+  const streak = dailyStreakForClaim(wallet?.last_daily_at ?? null, Number(wallet?.streak ?? 0), now);
+  const amount = dailyRewardForStreak(streak);
   const nextLastDailyAt = new Date(now).toISOString();
   const updateQuery = db
     .from("glow_wallets")

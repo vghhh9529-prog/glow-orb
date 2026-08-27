@@ -21,6 +21,7 @@ import {
   updateGuildMember,
 } from "./discord-api.server";
 import { ensureGuildRow } from "./guilds.server";
+import { dailyRewardForStreak, dailyStreakForClaim } from "./glow.server";
 import {
   discordAccountCreatedAt,
   renderBalanceCard,
@@ -29,9 +30,6 @@ import {
 } from "./card-renderer.server";
 
 const DAILY_COOLDOWN_MS = 12 * 60 * 60_000;
-const DAILY_BASE = 250;
-const DAILY_STREAK_BONUS = 50;
-const DAILY_STREAK_CAP = 10;
 
 export interface InteractionUser {
   id: string;
@@ -230,14 +228,16 @@ async function daily(user: InteractionUser) {
   const now = Date.now();
   if (last && now < last + DAILY_COOLDOWN_MS) {
     const remainingMinutes = Math.max(1, Math.ceil((last + DAILY_COOLDOWN_MS - now) / 60_000));
-    return interactionResponse(`المكافأة القادمة متاحة بعد **${remainingMinutes} دقيقة**.`, {
-      ephemeral: true,
-    });
+    const hours = Math.floor(remainingMinutes / 60);
+    const minutes = remainingMinutes % 60;
+    return interactionResponse(
+      `هدية Daily مستلمة مسبقاً.\nالموعد القادم بعد **${hours ? `${hours} ساعة و` : ""}${minutes} دقيقة**.\nستريكك الحالي: **${Number(wallet?.streak ?? 0)}**.`,
+      { ephemeral: true, title: "Daily Gift", color: 0x22d3ee },
+    );
   }
 
-  const streak =
-    last && now < last + 36 * 60 * 60_000 ? Math.min(Number(wallet?.streak ?? 0) + 1, 999) : 1;
-  const amount = DAILY_BASE + Math.min(streak, DAILY_STREAK_CAP) * DAILY_STREAK_BONUS;
+  const streak = dailyStreakForClaim(wallet?.last_daily_at ?? null, Number(wallet?.streak ?? 0), now);
+  const amount = dailyRewardForStreak(streak);
   const nextLastDailyAt = new Date(now).toISOString();
   const updateQuery = database
     .from("glow_wallets")
@@ -269,9 +269,12 @@ async function daily(user: InteractionUser) {
     console.error("Discord daily transaction insert failed", transactionError);
     return interactionResponse("تم تحديث الرصيد، لكن تعذر حفظ سجل المكافأة.", { ephemeral: true });
   }
-  return interactionResponse(`استلمت **${amount} Glow**. الستريك الحالي: **${streak}**.`, {
-    ephemeral: true,
-  });
+  const newBalance = Number(wallet?.balance ?? 0) + amount;
+  const nextReward = dailyRewardForStreak(streak + 1);
+  return interactionResponse(
+    `تم استلام **${amount.toLocaleString("en-US")} Glow**.\nرصيدك الجديد: **${newBalance.toLocaleString("en-US")} Glow**.\nالستريك الحالي: **${streak}** · الهدية القادمة قد تصل إلى **${nextReward.toLocaleString("en-US")} Glow**.`,
+    { ephemeral: true, title: "Daily Gift Claimed", color: 0x7c5cff },
+  );
 }
 
 async function balance(user: InteractionUser, targetId = user.id) {

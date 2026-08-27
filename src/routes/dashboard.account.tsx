@@ -1,9 +1,12 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { claimGlowDaily, getGlowLeaderboard, getMe, getMyProfile, getWallet, signOut } from "@/lib/api.functions";
 import { TopBar } from "@/components/glow/shell";
+import { GlowCoinIcon } from "@/components/glow/coin-icon";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useI18n } from "@/lib/i18n";
 import { userAvatarUrl } from "@/lib/discord";
@@ -25,19 +28,6 @@ export const Route = createFileRoute("/dashboard/account")({
   component: Account,
 });
 
-function GlowCoinIcon({ className = "size-10" }: { className?: string }) {
-  return (
-    <span
-      className={`inline-flex shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-violet-300 via-primary to-cyan-300 p-1 shadow-[0_0_24px_hsl(var(--primary)/0.35)] ${className}`}
-      aria-hidden="true"
-    >
-      <span className="flex size-full items-center justify-center rounded-full border border-white/50 bg-[#171531] text-[0.72em] font-black text-white">
-        G
-      </span>
-    </span>
-  );
-}
-
 function Account() {
   const { t } = useI18n();
   const qc = useQueryClient();
@@ -47,7 +37,11 @@ function Account() {
     queryFn: () => getWallet(),
     enabled: Boolean(me.data),
   });
-  const board = useQuery({ queryKey: ["glow-board"], queryFn: () => getGlowLeaderboard() });
+  const board = useQuery({
+    queryKey: ["glow-board"],
+    queryFn: () => getGlowLeaderboard(),
+    enabled: Boolean(me.data),
+  });
   const profile = useQuery({
     queryKey: ["my-profile"],
     queryFn: () => getMyProfile(),
@@ -56,13 +50,43 @@ function Account() {
 
   const claim = useMutation({
     mutationFn: () => claimGlowDaily(),
-    onSuccess: (res: { amount?: number }) => {
-      toast.success(t(`استلمت ${res.amount ?? 0} Glow ✨`, `Claimed ${res.amount ?? 0} Glow ✨`));
+    onSuccess: (res: { ok?: boolean; amount?: number; nextAt?: string; reason?: string }) => {
+      if (res.ok === false) {
+        toast.error(
+          res.reason === "cooldown"
+            ? t("الهدية استُلمت مسبقاً، انتظر حتى موعدها القادم.", "This gift was already claimed. Wait until the next window.")
+            : t("تعذر استلام الهدية الآن.", "The gift could not be claimed right now."),
+        );
+        qc.invalidateQueries({ queryKey: ["wallet"] });
+        return;
+      }
+      toast.success(t(`استلمت ${res.amount ?? 0} Glow`, `Claimed ${res.amount ?? 0} Glow`));
       qc.invalidateQueries({ queryKey: ["wallet"] });
       qc.invalidateQueries({ queryKey: ["glow-board"] });
     },
-    onError: () => toast.error(t("ما زال الوقت باقي", "Not available yet")),
+    onError: () => toast.error(t("تعذر الاتصال بالخادم، حاول مرة ثانية.", "Could not reach the server. Try again.")),
   });
+
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+  const next = wallet.data?.nextDailyAt ? new Date(wallet.data.nextDailyAt) : null;
+  const remainingMs = next ? Math.max(0, next.getTime() - now) : 0;
+  const remainingText = useMemo(() => {
+    if (!remainingMs) return t("متاحة الآن", "Ready now");
+    const totalMinutes = Math.ceil(remainingMs / 60_000);
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    return t(
+      `${hours ? `${hours}س ` : ""}${minutes}د متبقية`,
+      `${hours ? `${hours}h ` : ""}${minutes}m remaining`,
+    );
+  }, [remainingMs, t]);
+  const currentStreak = Number(wallet.data?.streak ?? 0);
+  const streakProgress = Math.min(100, (currentStreak / 10) * 100);
+  const nextReward = Number(wallet.data?.nextReward ?? 300);
 
   if (!me.isLoading && !me.data) {
     return (
@@ -76,8 +100,6 @@ function Account() {
       </div>
     );
   }
-
-  const next = wallet.data?.nextDailyAt ? new Date(wallet.data.nextDailyAt) : null;
 
   return (
     <div className="min-h-screen bg-background">
@@ -102,6 +124,18 @@ function Account() {
         >
           <ArrowLeft className="size-4" /> {t("السيرفرات", "Servers")}
         </Link>
+        <nav className="mb-6 flex gap-2 overflow-x-auto pb-1" aria-label={t("قائمة الحساب", "Account navigation")}>
+          {[
+            ["#wallet", t("المحفظة", "Wallet")],
+            ["#daily", t("الهدية اليومية", "Daily gift")],
+            ["#glow-leaderboard", t("الصدارة", "Leaderboard")],
+            ["#activity", t("النشاط", "Activity")],
+          ].map(([href, label]) => (
+            <a key={href} href={href} className="shrink-0 rounded-full border border-border/70 bg-card/50 px-3 py-2 text-xs font-semibold text-muted-foreground transition hover:border-primary/40 hover:bg-primary/10 hover:text-primary">
+              {label}
+            </a>
+          ))}
+        </nav>
 
         {me.data && (
           <Card className="relative overflow-hidden border-primary/30 bg-gradient-to-br from-primary/15 via-card/70 to-card/40 p-6 sm:p-8">
@@ -142,7 +176,7 @@ function Account() {
           </>
         )}
 
-        <section aria-labelledby="glow-wallet-title" className="mt-6">
+        <section id="wallet" aria-labelledby="glow-wallet-title" className="mt-6 scroll-mt-24">
           <div className="mb-3 flex items-end justify-between gap-3">
             <div>
               <p className="text-xs font-bold uppercase tracking-[0.2em] text-primary">Glow currency</p>
@@ -175,7 +209,7 @@ function Account() {
             </Card>
           </div>
 
-          <Card className="mt-4 overflow-hidden border-primary/25 bg-gradient-to-r from-primary/10 via-card/60 to-cyan-400/5 p-5 sm:p-6">
+          <Card id="daily" className="mt-4 scroll-mt-24 overflow-hidden border-primary/25 bg-gradient-to-r from-primary/10 via-card/60 to-cyan-400/5 p-5 sm:p-6">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex min-w-0 items-center gap-3">
                 <span className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-primary/15 text-primary">
@@ -184,12 +218,14 @@ function Account() {
                 <div className="min-w-0">
                   <p className="font-semibold text-foreground">{t("هدية Daily", "Daily gift")}</p>
                   <p className="text-sm leading-6 text-muted-foreground">
-                    {wallet.data?.canClaim
-                      ? t("جاهزة للاستلام الآن!", "Ready to claim now!")
-                      : next
-                        ? t(`متاحة في ${next.toLocaleString()}`, `Available at ${next.toLocaleString()}`)
-                        : t("تتجدد كل 12 ساعة", "Renews every 12 hours")}
+                    {wallet.data?.canClaim ? t("جاهزة للاستلام الآن!", "Ready to claim now!") : remainingText}
                   </p>
+                  <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-semibold text-primary">
+                    <span>+{nextReward.toLocaleString("en-US")} Glow</span>
+                    <span className="text-muted-foreground">·</span>
+                    <span>{t(`ستريك ${currentStreak}/10`, `Streak ${currentStreak}/10`)}</span>
+                  </div>
+                  <Progress value={streakProgress} className="mt-3 h-1.5 bg-primary/10" />
                 </div>
               </div>
               <Button
@@ -217,11 +253,16 @@ function Account() {
           </>
         )}
 
-        <h2 className="mt-10 text-lg font-bold text-foreground">
+        <h2 id="glow-leaderboard" className="mt-10 scroll-mt-24 text-lg font-bold text-foreground">
           {t("صدارة Glow", "Glow leaderboard")}
         </h2>
         <Card className="mt-3 divide-y divide-border/50 border-border/60 bg-card/50">
           {board.isLoading && <Skeleton className="m-4 h-24" />}
+          {board.data?.length === 0 && (
+            <p className="px-5 py-6 text-center text-sm text-muted-foreground">
+              {t("لا توجد محافظ في الصدارة بعد", "No wallets on the leaderboard yet")}
+            </p>
+          )}
           {board.data?.map(
             (
               row: {
@@ -242,13 +283,16 @@ function Account() {
                 <span className="flex-1 truncate text-sm text-foreground">
                   {row.username ?? row.userId}
                 </span>
-                <span className="text-sm font-semibold text-primary">{row.balance}</span>
+                <span className="flex items-center gap-1.5 text-sm font-semibold text-primary">
+                  {row.balance.toLocaleString("en-US")}
+                  <GlowCoinIcon className="size-5" />
+                </span>
               </div>
             ),
           )}
         </Card>
 
-        <h2 className="mt-10 text-lg font-bold text-foreground">
+        <h2 id="activity" className="mt-10 scroll-mt-24 text-lg font-bold text-foreground">
           {t("آخر العمليات", "Recent activity")}
         </h2>
         <Card className="mt-3 divide-y divide-border/50 border-border/60 bg-card/50">
@@ -260,11 +304,14 @@ function Account() {
               note: string | null;
               created_at: string;
             }) => (
-              <div key={h.id} className="flex items-center justify-between px-5 py-3 text-sm">
-                <span className="text-muted-foreground">{h.note ?? h.kind}</span>
-                <span className={h.amount >= 0 ? "text-primary" : "text-destructive"}>
+              <div key={h.id} className="flex items-center justify-between gap-3 px-5 py-3 text-sm">
+                <span className="flex min-w-0 items-center gap-2 text-muted-foreground">
+                  <GlowCoinIcon className="size-5" />
+                  <span className="truncate">{h.note ?? h.kind}</span>
+                </span>
+                <span className={h.amount >= 0 ? "shrink-0 text-primary" : "shrink-0 text-destructive"}>
                   {h.amount >= 0 ? "+" : ""}
-                  {h.amount}
+                  {Number(h.amount).toLocaleString("en-US")}
                 </span>
               </div>
             ),
