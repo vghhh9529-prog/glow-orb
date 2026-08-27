@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { DiscordOAuthError, exchangeCode, fetchCurrentUser } from "@/lib/discord-api.server";
 import { callbackUrl, requestOrigin } from "@/lib/origin.server";
 import { SESSION_TTL_DAYS, buildSessionCookie } from "@/lib/session.server";
-import { encryptSecret } from "@/lib/secret-crypto.server";
+import { assertEncryptionKeyConfigured, encryptSecret } from "@/lib/secret-crypto.server";
 import { allowRateLimit, requestAddress } from "@/lib/rate-limit.server";
 
 function cookies(request: Request): Record<string, string> {
@@ -56,6 +56,10 @@ export const Route = createFileRoute("/api/public/auth/discord/callback")({
         if (!state || state !== jar["glow_oauth_state"]) return fail("state_mismatch");
 
         try {
+          // Validate server-side encryption configuration before consuming Discord's one-time code.
+          stage = "configuration";
+          assertEncryptionKeyConfigured();
+
           stage = "token_exchange";
           const token = await exchangeCode(code, callbackUrl(request));
 
@@ -108,6 +112,7 @@ export const Route = createFileRoute("/api/public/auth/discord/callback")({
           return new Response(null, { status: 302, headers });
         } catch (error) {
           console.error(`[OAuth] Discord callback failed at ${stage}`, error);
+          if (stage === "configuration") return fail("server_misconfigured", "encryption_key");
           if (stage === "token_exchange" && error instanceof DiscordOAuthError) {
             return fail("oauth_failed", `${stage}_${error.status}_${error.code}`);
           }

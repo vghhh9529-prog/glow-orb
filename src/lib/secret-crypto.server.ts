@@ -12,6 +12,10 @@ function encryptionKey() {
   return createHash("sha256").update(secret, "utf8").digest();
 }
 
+export function assertEncryptionKeyConfigured() {
+  encryptionKey();
+}
+
 export function encryptSecret(value: string) {
   const iv = randomBytes(IV_BYTES);
   const cipher = createCipheriv("aes-256-gcm", encryptionKey(), iv);
