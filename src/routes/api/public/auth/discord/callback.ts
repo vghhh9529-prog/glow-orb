@@ -57,8 +57,11 @@ export const Route = createFileRoute("/api/public/auth/discord/callback")({
 
         try {
           // Validate server-side encryption configuration before consuming Discord's one-time code.
-          stage = "configuration";
+          stage = "configuration_encryption";
           assertEncryptionKeyConfigured();
+          stage = "configuration_supabase";
+          const { assertSupabaseAdminConfigured } = await import("@/integrations/supabase/client.server");
+          assertSupabaseAdminConfigured();
 
           stage = "token_exchange";
           const token = await exchangeCode(code, callbackUrl(request));
@@ -112,7 +115,8 @@ export const Route = createFileRoute("/api/public/auth/discord/callback")({
           return new Response(null, { status: 302, headers });
         } catch (error) {
           console.error(`[OAuth] Discord callback failed at ${stage}`, error);
-          if (stage === "configuration") return fail("server_misconfigured", "encryption_key");
+          if (stage === "configuration_encryption") return fail("server_misconfigured", "encryption_key");
+          if (stage === "configuration_supabase") return fail("server_misconfigured", "supabase");
           if (stage === "token_exchange" && error instanceof DiscordOAuthError) {
             return fail("oauth_failed", `${stage}_${error.status}_${error.code}`);
           }
