@@ -11,6 +11,20 @@ export default defineConfig({
   // Keep Cloudflare as the default for Lovable, but pin this repository build to Node
   // when it is deployed as the permanent dashboard service.
   nitro: { preset: process.env["NITRO_PRESET"] ?? "node-server" },
+  vite: {
+    build: {
+      sourcemap: false,
+      minify: "esbuild",
+      cssMinify: "lightningcss",
+      rollupOptions: {
+        output: {
+          entryFileNames: "assets/[hash].js",
+          chunkFileNames: "assets/chunks/[hash].js",
+          assetFileNames: "assets/[hash][extname]",
+        },
+      },
+    },
+  },
   tanstackStart: {
     // Redirect TanStack Start's bundled server entry to src/server.ts (our SSR error wrapper).
     // nitro/vite builds from this
