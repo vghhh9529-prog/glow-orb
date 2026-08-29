@@ -292,26 +292,28 @@ export interface GlowTransferCodeCardStats {
 }
 
 export function renderTransferCodeCard(stats: GlowTransferCodeCardStats) {
-  const width = 1200;
-  const height = 630;
+  const width = 800;
+  const height = 300;
   const canvas = createCanvas(width, height);
   const ctx = canvas.getContext("2d");
-  cardShell(ctx, width, height, "TRANSFER CONFIRMATION");
-  text(ctx, "Enter the 4-digit code shown below to confirm", 72, 184, 24, "#f5f4ff", "700");
-  text(ctx, `${stats.senderName.slice(0, 24)}  →  ${stats.recipientName.slice(0, 24)}`, 72, 222, 18, "#a9acc8", "600");
-  text(ctx, `${stats.amount.toLocaleString("en-US")} Glow Coin  ·  Expires in ${stats.expiresInMinutes} minutes`, 72, 254, 16, "#858daf", "600");
+  const background = ctx.createLinearGradient(0, 0, width, height);
+  background.addColorStop(0, "#0b1028");
+  background.addColorStop(0.5, "#1a1850");
+  background.addColorStop(1, "#351f78");
+  ctx.fillStyle = background;
+  ctx.fillRect(0, 0, width, height);
 
-  roundedRect(ctx, 160, 316, 880, 160, 28);
-  ctx.fillStyle = "rgba(124,92,255,.14)";
+  roundedRect(ctx, 52, 48, width - 104, height - 96, 24);
+  ctx.fillStyle = "rgba(16, 18, 55, .72)";
   ctx.fill();
-  ctx.strokeStyle = "rgba(185,170,255,.42)";
+  ctx.strokeStyle = "rgba(190, 175, 255, .55)";
   ctx.lineWidth = 2;
   ctx.stroke();
+
   const codeLine = stats.code.slice(0, 4).split("").join("    ");
   ctx.textAlign = "center";
-  text(ctx, codeLine, width / 2, 418, 82, "#f5f4ff", "800");
+  text(ctx, codeLine, width / 2, 190, 86, "#ffffff", "800");
   ctx.textAlign = "start";
-  text(ctx, "This code is private. Never share it with anyone else.", 72, 570, 16, "#858daf", "600");
   return canvas.toBuffer("image/png");
 }
 
