@@ -233,7 +233,9 @@ export type Database = {
           created_at: string
           icon: string | null
           id: string
+          invite_url: string | null
           locale: string
+          member_count: number
           name: string
           prefix: string
           timezone: string
@@ -243,7 +245,9 @@ export type Database = {
           created_at?: string
           icon?: string | null
           id: string
+          invite_url?: string | null
           locale?: string
+          member_count?: number
           name: string
           prefix?: string
           timezone?: string
@@ -253,7 +257,9 @@ export type Database = {
           created_at?: string
           icon?: string | null
           id?: string
+          invite_url?: string | null
           locale?: string
+          member_count?: number
           name?: string
           prefix?: string
           timezone?: string

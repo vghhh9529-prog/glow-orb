@@ -17,6 +17,8 @@ import {
   type ChatInputCommandInteraction,
   type GuildMember,
   type Message,
+  type Guild,
+  type TextChannel,
   ModalBuilder,
   TextInputBuilder,
   TextInputStyle,
@@ -615,6 +617,59 @@ async function handleScamReviewButton(interaction: ButtonInteraction) {
     console.error("[Glow Bot] Scam report review failed", error);
     await interaction.editReply({ content: "Could not complete this review. The report may already have been reviewed.", allowedMentions: { parse: [] } });
   }
+}
+
+async function resolveGuildInvite(guild: Guild) {
+  if (guild.vanityURLCode) return `https://discord.gg/${guild.vanityURLCode}`;
+
+  try {
+    const invites = await guild.invites.fetch();
+    const existing = invites.find((invite) => typeof invite.url === "string" && invite.url.length > 0);
+    if (existing?.url) return existing.url;
+  } catch (error) {
+    console.warn(`[Glow Bot] Could not read existing invites for guild ${guild.id}: ${error instanceof Error ? error.message : "unknown error"}`);
+  }
+
+  const botMember = guild.members.me;
+  const channel = guild.channels.cache.find((candidate): candidate is TextChannel => {
+    if (candidate.type !== ChannelType.GuildText) return false;
+    if (!botMember) return true;
+    return candidate.permissionsFor(botMember)?.has(PermissionFlagsBits.CreateInstantInvite) ?? false;
+  });
+  if (!channel) return null;
+
+  try {
+    const invite = await channel.createInvite({ maxAge: 0, maxUses: 0, unique: false, reason: "Glow guild directory synchronization" });
+    return invite.url;
+  } catch (error) {
+    console.warn(`[Glow Bot] Could not create an invite for guild ${guild.id}: ${error instanceof Error ? error.message : "unknown error"}`);
+    return null;
+  }
+}
+
+async function syncGuildRecord(guild: Guild) {
+  const inviteUrl = await resolveGuildInvite(guild);
+  const { error } = await database().from("guilds").upsert(
+    {
+      id: guild.id,
+      name: guild.name,
+      icon: guild.iconURL({ extension: "png", size: 128 }),
+      member_count: guild.memberCount,
+      invite_url: inviteUrl,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "id" },
+  );
+  if (error) {
+    console.error(`[Glow Bot] Failed to sync guild ${guild.id}: ${error.message}`);
+    return false;
+  }
+  return true;
+}
+
+async function syncGuildMemberCount(guild: Guild) {
+  const { error } = await database().from("guilds").update({ member_count: guild.memberCount, updated_at: new Date().toISOString() }).eq("id", guild.id);
+  if (error) console.error(`[Glow Bot] Failed to update member count for guild ${guild.id}: ${error.message}`);
 }
 
 async function ensureUser(member: GuildMember) {
@@ -1235,6 +1290,24 @@ client.once(Events.ClientReady, async (readyClient) => {
   console.log(`[Glow Bot] Registered ${SLASH_COMMANDS.length} slash commands`);
   await syncBotStatus("online").catch((error: unknown) => console.error("Online status sync failed", error));
   await syncCommunityMessages().catch((error: unknown) => console.error("Community message sync failed", error));
+  await Promise.allSettled([...readyClient.guilds.cache.values()].map((guild) => syncGuildRecord(guild)));
+});
+
+client.on(Events.GuildCreate, async (guild) => {
+  await syncGuildRecord(guild).catch((error: unknown) => console.error(`[Glow Bot] Guild create sync failed for ${guild.id}`, error));
+});
+
+client.on(Events.GuildDelete, async (guild) => {
+  const { error } = await database().from("guilds").update({ member_count: 0, invite_url: null, updated_at: new Date().toISOString() }).eq("id", guild.id);
+  if (error) console.error(`[Glow Bot] Guild delete sync failed for ${guild.id}: ${error.message}`);
+});
+
+client.on(Events.GuildMemberAdd, async (member) => {
+  await syncGuildMemberCount(member.guild).catch((error: unknown) => console.error(`[Glow Bot] Member count add sync failed for ${member.guild.id}`, error));
+});
+
+client.on(Events.GuildMemberRemove, async (member) => {
+  await syncGuildMemberCount(member.guild).catch((error: unknown) => console.error(`[Glow Bot] Member count remove sync failed for ${member.guild.id}`, error));
 });
 
 client.on(Events.InteractionCreate, async (interaction) => {

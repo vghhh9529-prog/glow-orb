@@ -46,6 +46,8 @@ CREATE TABLE IF NOT EXISTS public.guilds (
   id text PRIMARY KEY,
   name text NOT NULL,
   icon text,
+  member_count integer NOT NULL DEFAULT 0,
+  invite_url text,
   timezone text NOT NULL DEFAULT 'Asia/Riyadh',
   locale text NOT NULL DEFAULT 'ar',
   prefix text NOT NULL DEFAULT '!',
