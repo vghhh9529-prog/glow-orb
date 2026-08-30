@@ -1,4 +1,7 @@
 -- Glow Coin transfers must be atomic: debit, credit, and both ledger rows succeed together.
+-- Keep this explicit because the server calls this function through Supabase service_role.
+GRANT USAGE ON SCHEMA public TO service_role;
+
 CREATE OR REPLACE FUNCTION public.transfer_glow_coin(
   p_sender_id text,
   p_recipient_id text,

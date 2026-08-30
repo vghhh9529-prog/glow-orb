@@ -31,7 +31,6 @@ import {
   discordAccountCreatedAt,
   renderBalanceCard,
   renderProfileCard,
-  renderTransferCodeCard,
   renderUserCard,
 } from "./card-renderer.server";
 
@@ -426,10 +425,7 @@ export interface DiscordCardInteractionResult {
 
 export interface DiscordTransferInteractionResult {
   challenge: GlowTransferChallenge;
-  buffer: Buffer;
-  filename: string;
-  title: string;
-  description: string;
+  message: string;
 }
 
 export async function sendDiscordCardFollowup(
@@ -491,16 +487,7 @@ export async function handleDiscordTransferCommand(payload: DiscordInteractionPa
     kind: "challenge",
     result: {
       challenge: challenge.challenge,
-      buffer: renderTransferCodeCard({
-        senderName: challenge.challenge.senderName,
-        recipientName: challenge.challenge.recipientName,
-        amount: challenge.challenge.amount,
-        code: challenge.challenge.code,
-        expiresInMinutes: 5,
-      }),
-      filename: "glow-transfer-confirmation.png",
-      title: "Confirm Glow Coin Transfer",
-      description: "Enter the four digits shown in the image to confirm this transfer. Type the code in the same channel within 5 minutes.",
+      message: challenge.challenge.code,
     },
   };
 }
@@ -509,19 +496,7 @@ export async function sendDiscordTransferFollowup(
   payload: DiscordInteractionPayload,
   transfer: DiscordTransferInteractionResult,
 ) {
-  if (!payload.token) throw new Error("Missing Discord interaction token");
-  const form = new FormData();
-  form.append(
-    "payload_json",
-    JSON.stringify({
-      allowed_mentions: { parse: [] },
-      attachments: [{ id: "0", filename: transfer.filename }],
-      flags: 64,
-    }),
-  );
-  form.append("files[0]", new Blob([new Uint8Array(transfer.buffer)], { type: "image/png" }), transfer.filename);
-  const response = await fetch(`${API}/webhooks/${CLIENT_ID}/${payload.token}`, { method: "POST", body: form });
-  if (!response.ok) throw new Error(`Discord transfer follow-up failed: ${response.status} ${await response.text()}`);
+  await sendDiscordTextFollowup(payload, transfer.message);
 }
 
 export async function sendDiscordTextFollowup(payload: DiscordInteractionPayload, message: string) {

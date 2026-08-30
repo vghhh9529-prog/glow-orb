@@ -54,7 +54,6 @@ import {
 import { SLASH_COMMANDS } from "../src/lib/slash-commands";
 import { configuredPublicOrigin } from "../src/lib/origin.server";
 import { confirmGlowTransfer, createGlowTransferChallenge } from "../src/lib/glow.server";
-import { renderTransferCodeCard } from "../src/lib/card-renderer.server";
 import {
   isScamReviewButton,
   reviewScamReport,
@@ -1370,10 +1369,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       if (transfer.kind === "error") {
         await interaction.reply({ content: transfer.message, ephemeral: true });
       } else {
-        await interaction.reply({
-          files: [{ attachment: transfer.result.buffer, name: transfer.result.filename }],
-          ephemeral: true,
-        });
+        await interaction.reply({ content: transfer.result.message, ephemeral: true });
       }
       return;
     }
@@ -1663,20 +1659,11 @@ async function handleGlowCoinMessage(message: Message) {
       return true;
     }
     const transfer = challenge.challenge;
-    const card = renderTransferCodeCard({
-      senderName: transfer.senderName,
-      recipientName: transfer.recipientName,
-      amount: transfer.amount,
-      code: transfer.code,
-      expiresInMinutes: 5,
-    });
     try {
-      await message.channel.send({
-        files: [{ attachment: card, name: "glow-transfer-confirmation.png" }],
-      });
+      await message.channel.send(transfer.code);
       if (message.deletable) await message.delete().catch(() => undefined);
     } catch (error) {
-      console.error("Glow Coin transfer confirmation image failed", error);
+      console.error("Glow Coin transfer confirmation message failed", error);
       if (message.deletable) await message.delete().catch(() => undefined);
     }
     return true;
@@ -1691,8 +1678,17 @@ async function handleGlowCoinMessage(message: Message) {
     code: compactCode,
   });
   if (confirmation.reason === "none") return false;
-  if (confirmation.ok || confirmation.reason === "expired" || confirmation.reason === "too_many_attempts") {
+  if (confirmation.ok) {
     if (message.deletable) await message.delete().catch(() => undefined);
+    await message.channel.send(`✅ <@${confirmation.senderId ?? message.author.id}> transferred ${confirmation.amount.toLocaleString("en-US")} Glow Coin to <@${confirmation.recipientId ?? "0"}>.`).catch((error: unknown) => console.error("Glow Coin transfer success message failed", error));
+    return true;
+  }
+  if (confirmation.reason === "expired" || confirmation.reason === "too_many_attempts") {
+    if (message.deletable) await message.delete().catch(() => undefined);
+    return true;
+  }
+  if (confirmation.reason === "storage") {
+    await message.channel.send("❌ The Glow Coin transfer could not be completed because of a database error. Your Glow Coin was not changed; please try again later.").catch((error: unknown) => console.error("Glow Coin transfer failure message failed", error));
   }
   return true;
 }

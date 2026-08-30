@@ -116,7 +116,19 @@ export interface GlowTransferResult {
 }
 
 async function ensureWalletForUser(db: Awaited<ReturnType<typeof admin>>, userId: string) {
-  await db.from("glow_wallets").upsert({ user_id: userId }, { onConflict: "user_id", ignoreDuplicates: true });
+  const { error } = await db
+    .from("glow_wallets")
+    .upsert({ user_id: userId }, { onConflict: "user_id", ignoreDuplicates: true });
+  if (error) {
+    console.error(`[Glow Coin] Wallet upsert failed for ${userId}`, {
+      message: error.message,
+      code: error.code,
+      details: error.details,
+      hint: error.hint,
+    });
+    return false;
+  }
+  return true;
 }
 
 /**
@@ -127,15 +139,24 @@ export async function transferGlowCoin(senderId: string, recipientId: string, am
   if (senderId === recipientId) return { ok: false, reason: "self" };
   if (!Number.isInteger(amount) || amount < 1 || amount > 1_000_000_000) return { ok: false, reason: "invalid_amount" };
   const db = await admin();
-  await ensureWalletForUser(db, senderId);
-  await ensureWalletForUser(db, recipientId);
+  if (!(await ensureWalletForUser(db, senderId)) || !(await ensureWalletForUser(db, recipientId))) {
+    return { ok: false, reason: "storage" };
+  }
   const { data, error } = await db.rpc("transfer_glow_coin", {
     p_sender_id: senderId,
     p_recipient_id: recipientId,
     p_amount: amount,
   });
   if (error) {
-    console.error("Glow Coin transfer RPC failed", error);
+    console.error("Glow Coin transfer RPC failed", {
+      message: error.message,
+      code: error.code,
+      details: error.details,
+      hint: error.hint,
+      senderId,
+      recipientId,
+      amount,
+    });
     return { ok: false, reason: "storage" };
   }
   const result = typeof data === "object" && data !== null && !Array.isArray(data)
@@ -266,7 +287,7 @@ export async function createGlowTransferChallenge(input: {
 }
 
 export type GlowTransferConfirmationResult =
-  | { ok: true; amount: number; senderName: string; recipientName: string }
+  | { ok: true; amount: number; senderId: string; recipientId: string; senderName: string; recipientName: string }
   | { ok: false; reason: "none" | "expired" | "invalid_code" | "too_many_attempts" | "self" | "invalid_amount" | "insufficient_funds" | "conflict" | "storage"; balance?: number };
 
 export async function confirmGlowTransfer(input: {
@@ -332,6 +353,8 @@ export async function confirmGlowTransfer(input: {
   return {
     ok: true,
     amount: transfer.amount ?? Number(data["amount"]),
+    senderId: String(data["senderId"] ?? input.senderId),
+    recipientId: String(data["recipientId"] ?? ""),
     senderName: String(data["senderName"] ?? "Sender"),
     recipientName: String(data["recipientName"] ?? "Recipient"),
   };
