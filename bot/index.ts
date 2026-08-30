@@ -100,6 +100,7 @@ const RELEASE_NOTES =
     "**Ticket publishing:** Server owners, Administrators and members with Manage Server can now pass the server access check when publishing the support panel.",
     "**Permission recovery:** The dashboard can verify the member's real Discord roles through Glow when OAuth permission data is incomplete or stale.",
     "**Branding:** The site tab icon now uses the small Glow bot logo.",
+    "**Glow Coin transfers:** Confirmation codes are now sent as fast plain text, with clear success and database-error feedback.",
   ].join("\n");
 
 function database() {
