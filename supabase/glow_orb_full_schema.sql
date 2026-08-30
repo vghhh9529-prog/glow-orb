@@ -93,6 +93,31 @@ CREATE INDEX IF NOT EXISTS guild_items_enabled_idx
 -- Suggestions
 -- -----------------------------------------------------------------------------
 
+CREATE TABLE IF NOT EXISTS public.site_notifications (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  notification_key text NOT NULL UNIQUE,
+  title_ar text NOT NULL,
+  title_en text NOT NULL,
+  body_ar text NOT NULL,
+  body_en text NOT NULL,
+  href text,
+  tone text NOT NULL DEFAULT 'info',
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.site_notification_reads (
+  notification_id uuid NOT NULL REFERENCES public.site_notifications(id) ON DELETE CASCADE,
+  user_id text NOT NULL REFERENCES public.discord_users(id) ON DELETE CASCADE,
+  read_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (notification_id, user_id)
+);
+
+CREATE INDEX IF NOT EXISTS site_notifications_created_at_idx
+  ON public.site_notifications (created_at DESC);
+
+CREATE INDEX IF NOT EXISTS site_notification_reads_user_idx
+  ON public.site_notification_reads (user_id, read_at DESC);
+
 CREATE TABLE IF NOT EXISTS public.suggestions (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   guild_id text NOT NULL REFERENCES public.guilds(id) ON DELETE CASCADE,
@@ -277,6 +302,8 @@ $$;
 ALTER TABLE public.discord_users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.app_sessions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.guilds ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.site_notifications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.site_notification_reads ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.guild_modules ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.guild_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.suggestions ENABLE ROW LEVEL SECURITY;
@@ -289,6 +316,8 @@ REVOKE ALL ON TABLE
   public.discord_users,
   public.app_sessions,
   public.guilds,
+  public.site_notifications,
+  public.site_notification_reads,
   public.guild_modules,
   public.guild_items,
   public.suggestions,
@@ -303,6 +332,8 @@ GRANT ALL PRIVILEGES ON TABLE
   public.discord_users,
   public.app_sessions,
   public.guilds,
+  public.site_notifications,
+  public.site_notification_reads,
   public.guild_modules,
   public.guild_items,
   public.suggestions,

@@ -1,10 +1,20 @@
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Bell, CheckCheck, Globe } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { getNotifications, markAllNotificationsRead, markNotificationRead } from "@/lib/api.functions";
 import logo from "@/assets/glow-brand-mark.png";
 import { SUPPORT_SERVER_URL } from "@/lib/discord";
-import { Globe } from "lucide-react";
 
 export function GlowMark({ size = 36 }: { size?: number }) {
   return (
@@ -32,7 +42,57 @@ export function LangToggle() {
   );
 }
 
-export function TopBar({ right, nav = false }: { right?: ReactNode; nav?: boolean }) {
+export function NotificationBell() {
+  const { t, lang } = useI18n();
+  const queryClient = useQueryClient();
+  const notifications = useQuery({
+    queryKey: ["site-notifications"],
+    queryFn: () => getNotifications(),
+    staleTime: 60_000,
+    refetchOnWindowFocus: true,
+  });
+  const markRead = useMutation({
+    mutationFn: (notificationId: string) => markNotificationRead({ data: { notificationId } }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["site-notifications"] }),
+  });
+  const markAllRead = useMutation({
+    mutationFn: () => markAllNotificationsRead(),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["site-notifications"] }),
+  });
+  const items = notifications.data?.notifications ?? [];
+  const unreadCount = notifications.data?.unreadCount ?? 0;
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="sm" aria-label={t("الإشعارات", "Notifications")} className="relative size-9 shrink-0 rounded-xl border border-border/50 bg-background/35 p-0 hover:border-primary/30 hover:bg-primary/10">
+          <Bell className="size-4" />
+          {unreadCount > 0 && <span className="absolute -end-1 -top-1 flex min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-black leading-4 text-primary-foreground">{unreadCount > 9 ? "9+" : unreadCount}</span>}
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" sideOffset={8} className="w-[min(22rem,calc(100vw-1.5rem))] rounded-2xl p-2">
+        <div className="flex items-center justify-between px-2 py-1.5">
+          <DropdownMenuLabel className="p-0 text-sm">{t("إشعارات Glow", "Glow notifications")}</DropdownMenuLabel>
+          {unreadCount > 0 && <button type="button" onClick={() => markAllRead.mutate()} className="inline-flex items-center gap-1 text-[11px] font-bold text-primary hover:text-foreground"><CheckCheck className="size-3.5" />{t("قراءة الكل", "Mark all read")}</button>}
+        </div>
+        <DropdownMenuSeparator />
+        {items.length === 0 ? <div className="px-3 py-8 text-center text-xs leading-6 text-muted-foreground">{t("ما عندك إشعارات جديدة حالياً.", "You have no notifications yet.")}</div> : items.map((notification) => (
+          <DropdownMenuItem key={notification.id} asChild className={`mb-1 items-start gap-3 rounded-xl p-0 ${notification.read ? "opacity-65" : "bg-primary/7"}`}>
+            <a href={notification.href ?? "/dashboard"} onClick={() => { if (!notification.read) markRead.mutate(notification.id); }} className="flex w-full items-start gap-3 rounded-xl p-3">
+              <span className={`mt-1 size-2 shrink-0 rounded-full ${notification.read ? "bg-muted-foreground/30" : "bg-primary shadow-[0_0_10px_hsl(var(--primary)/0.8)]"}`} />
+              <span className="min-w-0 flex-1">
+                <span className="block text-xs font-bold text-foreground">{lang === "ar" ? notification.titleAr : notification.titleEn}</span>
+                <span className="mt-1 block whitespace-normal text-[11px] leading-5 text-muted-foreground">{lang === "ar" ? notification.bodyAr : notification.bodyEn}</span>
+              </span>
+            </a>
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+export function TopBar({ right, nav = false, notifications = false }: { right?: ReactNode; nav?: boolean; notifications?: boolean }) {
   const { t } = useI18n();
   return (
     <header className="sticky top-0 z-40 border-b border-border/60 bg-background/80 backdrop-blur-xl">
@@ -64,6 +124,7 @@ export function TopBar({ right, nav = false }: { right?: ReactNode; nav?: boolea
           >
             {t("سيرفر الدعم", "Support")}
           </a>
+          {notifications && <NotificationBell />}
           <LangToggle />
           {right}
         </div>

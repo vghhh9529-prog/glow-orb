@@ -105,6 +105,7 @@ function Account() {
   return (
     <div className="min-h-screen bg-background">
       <TopBar
+        notifications
         right={
           <AccountMenu
             user={me.data ?? { id: "0", username: "Glow", avatar: null }}

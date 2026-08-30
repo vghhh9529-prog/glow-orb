@@ -53,7 +53,7 @@ function GuildDashboardRoute() {
   if (workspace.isError || !workspace.data) {
     return (
       <div className="min-h-screen bg-background">
-        <TopBar />
+        <TopBar notifications />
         <div className="mx-auto max-w-lg px-4 py-28 text-center">
           <ShieldAlert className="mx-auto size-12 text-destructive" />
           <h1 className="mt-5 text-2xl font-bold text-foreground">
@@ -76,7 +76,7 @@ function GuildDashboardRoute() {
   if (!workspace.data.botPresent && workspace.data.botCheckError) {
     return (
       <div className="min-h-screen bg-background">
-        <TopBar />
+        <TopBar notifications />
         <div className="mx-auto max-w-lg px-4 py-28 text-center">
           <ShieldAlert className="mx-auto size-12 text-destructive" />
           <h1 className="mt-5 text-2xl font-bold text-foreground">
@@ -104,7 +104,7 @@ function GuildDashboardRoute() {
   if (!workspace.data.botPresent) {
     return (
       <div className="min-h-screen bg-background">
-        <TopBar />
+        <TopBar notifications />
         <div className="mx-auto max-w-xl px-4 py-28 text-center">
           <div className="mx-auto flex size-16 items-center justify-center rounded-3xl bg-warning/15 text-warning">
             <Plus className="size-8" />

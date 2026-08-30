@@ -63,6 +63,7 @@ function Servers() {
   return (
     <div className="min-h-screen bg-background">
       <TopBar
+        notifications
         right={
           <div className="flex items-center gap-2">
             <a

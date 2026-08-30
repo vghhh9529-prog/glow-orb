@@ -43,6 +43,75 @@ export type Database = {
           },
         ]
       }
+      site_notification_reads: {
+        Row: {
+          notification_id: string
+          read_at: string
+          user_id: string
+        }
+        Insert: {
+          notification_id: string
+          read_at?: string
+          user_id: string
+        }
+        Update: {
+          notification_id?: string
+          read_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "site_notification_reads_notification_id_fkey"
+            columns: ["notification_id"]
+            isOneToOne: false
+            referencedRelation: "site_notifications"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "site_notification_reads_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "discord_users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      site_notifications: {
+        Row: {
+          body_ar: string
+          body_en: string
+          created_at: string
+          href: string | null
+          id: string
+          notification_key: string
+          title_ar: string
+          title_en: string
+          tone: string
+        }
+        Insert: {
+          body_ar: string
+          body_en: string
+          created_at?: string
+          href?: string | null
+          id?: string
+          notification_key: string
+          title_ar: string
+          title_en: string
+          tone?: string
+        }
+        Update: {
+          body_ar?: string
+          body_en?: string
+          created_at?: string
+          href?: string | null
+          id?: string
+          notification_key?: string
+          title_ar?: string
+          title_en?: string
+          tone?: string
+        }
+        Relationships: []
+      }
       discord_users: {
         Row: {
           access_token: string | null

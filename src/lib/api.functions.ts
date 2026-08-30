@@ -248,6 +248,23 @@ export const getGlowLeaderboard = createServerFn({ method: "GET" }).handler(asyn
   return glowLeaderboard();
 });
 
+export const getNotifications = createServerFn({ method: "GET" }).handler(async () => {
+  const { listMyNotifications } = await import("./notifications.server");
+  return listMyNotifications();
+});
+
+export const markNotificationRead = createServerFn({ method: "POST" })
+  .inputValidator((data) => z.object({ notificationId: z.string().uuid() }).parse(data))
+  .handler(async ({ data }) => {
+    const { markNotificationRead: markRead } = await import("./notifications.server");
+    return markRead(data.notificationId);
+  });
+
+export const markAllNotificationsRead = createServerFn({ method: "POST" }).handler(async () => {
+  const { markAllNotificationsRead: markAllRead } = await import("./notifications.server");
+  return markAllRead();
+});
+
 export const syncSlashCommands = createServerFn({ method: "POST" }).handler(async () => {
   const { requireSessionUser } = await import("./session.server");
   await requireSessionUser();
