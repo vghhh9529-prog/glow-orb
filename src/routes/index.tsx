@@ -10,6 +10,7 @@ import {
   Gauge,
   Layers3,
   MessageSquareHeart,
+  Megaphone,
   Mic,
   Rocket,
   Shield,
@@ -115,6 +116,36 @@ const systems = [
     dar: "رومات مؤقتة وأوامر مخصصة تعمل من داخل Discord.",
     den: "Temporary voice rooms and custom commands that work inside Discord.",
     tone: "text-amber-300 bg-amber-400/10",
+  },
+];
+
+const newsCards = [
+  {
+    tag: "NEW",
+    ar: "Glow Coin وصل",
+    en: "Glow Coin is here",
+    dar: "استلم هديتك اليومية، ابنِ الستريك، وخَلِّ كل يوم في مجتمعك له قيمة.",
+    den: "Claim your daily reward, build your streak and give every day in your community more value.",
+    icon: Sparkles,
+    tone: "from-violet-500/25 via-fuchsia-500/8 to-transparent",
+  },
+  {
+    tag: "LIVE",
+    ar: "تيكيت أذكى لفريقك",
+    en: "A sharper ticket workflow",
+    dar: "أولوية واضحة، إغلاق مرتب، وترانسكربت HTML يساعد فريقك يرجع لكل قرار.",
+    den: "Clear priorities, cleaner closes and HTML transcripts that keep every staff decision traceable.",
+    icon: MessageSquareHeart,
+    tone: "from-cyan-400/22 via-blue-500/8 to-transparent",
+  },
+  {
+    tag: "GLOW",
+    ar: "حماية تشوفها",
+    en: "Protection you can see",
+    dar: "بلاغات النصابين، لوقات أوضح، وإعدادات محفوظة لكل سيرفر بدون تخمين.",
+    den: "Scammer reports, clearer logs and persistent settings for every server without the guesswork.",
+    icon: Shield,
+    tone: "from-amber-300/22 via-orange-500/8 to-transparent",
   },
 ];
 
@@ -248,6 +279,30 @@ function Landing() {
                 <div className="relative mt-7 flex items-center gap-2 text-xs font-bold text-success"><CircleCheck className="size-4" />{t("جاهز للعمل", "Ready to work")}</div>
               </Card>
             ))}
+          </div>
+        </section>
+
+        <section id="updates" className="border-y border-border/40 bg-card/15">
+          <div className="mx-auto w-full max-w-7xl px-4 py-20 sm:px-6 lg:px-8 lg:py-24">
+            <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+              <div className="max-w-2xl">
+                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.3em] text-primary"><Megaphone className="size-4" />{t("آخر ما في Glow", "What is new in Glow")}</div>
+                <h2 className="mt-4 font-display text-3xl font-bold tracking-[-0.05em] text-foreground sm:text-5xl">{t("أخبار صغيرة. فرق كبير.", "Small updates. A better community.")}</h2>
+                <p className="mt-4 text-sm leading-7 text-muted-foreground sm:text-base">{t("كل تحديث له هدف: يخلي إدارة سيرفرك أسرع، أوضح، وأقرب للناس.", "Every update has a purpose: making your server faster to manage, easier to understand and closer to its people.")}</p>
+              </div>
+              <a href="#commands" className="group inline-flex items-center gap-2 text-sm font-bold text-primary transition hover:text-foreground">{t("شوف كل الأوامر", "Explore the commands")}<ArrowUpRight className="size-4 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" /></a>
+            </div>
+            <div className="mt-10 grid gap-4 lg:grid-cols-3">
+              {newsCards.map((news, index) => (
+                <Card key={news.en} className={`animate-rise-in group relative overflow-hidden border-border/60 bg-gradient-to-br ${news.tone} bg-card/45 p-6 transition duration-300 hover:-translate-y-1.5 hover:border-primary/45 hover:shadow-[0_26px_70px_-40px_hsl(var(--primary)/0.95)]`} style={{ animationDelay: `${index * 90}ms` }}>
+                  <div className="absolute -end-16 -top-16 size-40 rounded-full bg-white/5 blur-3xl transition duration-500 group-hover:scale-150" />
+                  <div className="relative flex items-center justify-between"><span className="flex size-11 items-center justify-center rounded-2xl border border-white/10 bg-background/45 text-primary"><news.icon className="size-5" /></span><span className="rounded-full border border-primary/20 bg-primary/10 px-2.5 py-1 text-[10px] font-black tracking-[0.2em] text-primary">{news.tag}</span></div>
+                  <h3 className="relative mt-7 text-xl font-bold text-foreground">{t(news.ar, news.en)}</h3>
+                  <p className="relative mt-3 text-sm leading-7 text-muted-foreground">{t(news.dar, news.den)}</p>
+                  <div className="relative mt-6 flex items-center gap-2 text-xs font-bold text-success"><CircleCheck className="size-4" />{t("متاح الآن", "Available now")}</div>
+                </Card>
+              ))}
+            </div>
           </div>
         </section>
 
